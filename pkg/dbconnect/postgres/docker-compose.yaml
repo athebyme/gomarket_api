@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:14
+    container_name: postgres_container
+    environment:
+      POSTGRES_USER: postgres      # Пользователь PostgreSQL
+      POSTGRES_PASSWORD: postgres  # Пароль PostgreSQL
+      POSTGRES_DB: postgres          # Название базы данных
+    ports:
+      - "5432:5432"                # Проброс порта PostgreSQL
+    volumes:
+      - pgdata:/var/lib/postgresql/data  # Том для сохранения данных
+    networks:
+      - goapp-network
+
+  adminer:  # Это опционально, для удобного веб-интерфейса администрирования
+    image: adminer
+    container_name: adminer_container
+    restart: always
+    ports:
+      - 8080:8080
+    networks:
+      - goapp-network
+
+volumes:
+  pgdata:
+
+networks:
+  goapp-network:
+    driver: bridge

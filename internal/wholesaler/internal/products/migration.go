@@ -11,13 +11,13 @@ func (m *WholesalerProducts) UpMigration(db *sql.DB) error {
 	query :=
 		`
 		CREATE TABLE IF NOT EXISTS wholesaler.products (
-		globalID INT PRIMARY KEY,
+		global_id INT PRIMARY KEY,
 		model VARCHAR(255),
 		appellation TEXT,
 		category TEXT,
 		brand VARCHAR(255),
 		country VARCHAR(255),
-		productType VARCHAR(255),
+		product_type VARCHAR(255),
 		features VARCHAR(255),
 		sex VARCHAR(255),
 		color VARCHAR(255),
@@ -26,7 +26,7 @@ func (m *WholesalerProducts) UpMigration(db *sql.DB) error {
 		media VARCHAR(255),
 		barcodes VARCHAR(255),
 		meterial VARCHAR(255),
-		packageBattery TEXT
+		package_battery TEXT
 		);
 		`
 	_, err := db.Exec(query)
@@ -42,10 +42,10 @@ func (m *WholesalerDescriptions) UpMigration(db *sql.DB) error {
 	query :=
 		`	
 			CREATE TABLE IF NOT EXISTS wholesaler.descriptions (
-			globalID INT,
-			productDescription TEXT,
-			productAppellation TEXT,
-			FOREIGN KEY (globalID) REFERENCES wholesaler.products(globalID)
+			global_id INT,
+			product_description TEXT,
+			product_appellation TEXT,
+			FOREIGN KEY (global_id) REFERENCES wholesaler.products(global_id)
 		);
 		`
 	_, err := db.Exec(query)
@@ -61,10 +61,10 @@ func (m *WholesalerStock) UpMigration(db *sql.DB) error {
 	query :=
 		`
 		CREATE TABLE IF NOT EXISTS wholesaler.stocks (
-		    globalID INT,
-		    mainArticular VARCHAR(255) NOT NULL,
+		    global_id INT,
+		    main_articular VARCHAR(255) NOT NULL,
 		    stocks INT,
-		    FOREIGN KEY (globalID) REFERENCES wholesaler.products(globalID)
+		    FOREIGN KEY (global_id) REFERENCES wholesaler.products(global_id)
 		);
 		`
 	_, err := db.Exec(query)
@@ -80,9 +80,9 @@ func (m *WholesalerPrice) UpMigration(db *sql.DB) error {
 	query :=
 		`
 		CREATE TABLE IF NOT EXISTS wholesaler.price (
-		    globalID INT,
+		    global_id INT,
 		    price INT,
-		    FOREIGN KEY (globalID) REFERENCES wholesaler.products(globalID)
+		    FOREIGN KEY (global_id) REFERENCES wholesaler.products(global_id)
 		);
 		`
 	_, err := db.Exec(query)

@@ -12,9 +12,9 @@ func (m *CreateProductsTable) UpMigration(db *sql.DB) error {
 	CREATE TABLE IF NOT EXISTS wildberries.products (
 		global_id INT PRIMARY KEY,
 		appellation TEXT NOT NULL,
-		categoryID INT NOT NULL,
+		category_id INT NOT NULL,
 		distance FLOAT NOT NULL,
-	    FOREIGN KEY (categoryID) REFERENCES wildberries.categories(categoryID)
+	    FOREIGN KEY (category_id) REFERENCES wildberries.categories(category_id)
 	);`
 	_, err := db.Exec(query)
 	if err != nil {
@@ -28,10 +28,10 @@ type CreateCategoriesTable struct{}
 func (m *CreateCategoriesTable) UpMigration(db *sql.DB) error {
 	query := `
 	CREATE TABLE IF NOT EXISTS wildberries.categories (
-	    categoryID INT PRIMARY KEY,
+		category_id INT PRIMARY KEY,
 		category VARCHAR(255) NOT NULL,
-		parentCategoryID INT,
-		parentCategoryName VARCHAR(255) NOT NULL
+		parent_category_id INT,
+		parent_category_name VARCHAR(255) NOT NULL
 	);`
 	_, err := db.Exec(query)
 	if err != nil {

@@ -42,9 +42,22 @@ func (s *WildberriesServer) Run() {
 	log.Println("WB migrations applied successfully!")
 
 	var ping *responses.Ping
-	ping, err = services.Ping(cfg.ApiKey)
+	ping, err = services.Ping()
 	if err != nil {
 		log.Fatalf("Error pingig WB server : %s\n", err)
 	}
 	log.Printf("WB server status is (%s), (TS: %s)", ping.Status, ping.TS)
+
+	// ----
+	cat_id := 5067
+	var charcs *responses.CharacteristicsResponse
+	charcs, err = services.GetItemCharcs(cat_id, "")
+	if err != nil {
+		log.Fatalf("Error getting characters : %s\n", err)
+	}
+
+	filtered := charcs.FilterPopularity()
+	for _, v := range filtered.Data {
+		log.Printf("\nPopular characters : %s", v.Name)
+	}
 }

@@ -10,7 +10,7 @@ import (
 
 const wildberriesPingURL = "https://common-api.wildberries.ru/ping"
 
-func Ping(apiKey string) (*responses.Ping, error) {
+func Ping() (*responses.Ping, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 
 	req, err := http.NewRequest("GET", wildberriesPingURL, nil)

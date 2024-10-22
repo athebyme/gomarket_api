@@ -1,17 +1,18 @@
-package services
+package get
 
 import (
 	"encoding/json"
 	"fmt"
 	"gomarketplace_api/internal/wildberries/internal/business/dto/responses"
+	"gomarketplace_api/internal/wildberries/internal/business/services"
 	"net/http"
 	"time"
 )
 
-const sexUrl = "https://content-api.wildberries.ru/content/v2/directory/kinds"
+const countryUrl = "https://content-api.wildberries.ru/content/v2/directory/countries"
 
-func GetSex(locale string) (*responses.SexResponse, error) {
-	url := sexUrl
+func GetCountries(locale string) (*responses.CountryResponse, error) {
+	url := countryUrl
 	if locale != "" {
 		url = fmt.Sprintf("%s?locale=%s", url, locale)
 	}
@@ -23,7 +24,7 @@ func GetSex(locale string) (*responses.SexResponse, error) {
 		return nil, err
 	}
 
-	SetAuthorizationHeader(req)
+	services.SetAuthorizationHeader(req)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -35,10 +36,10 @@ func GetSex(locale string) (*responses.SexResponse, error) {
 		return nil, fmt.Errorf("unexpected status code: %s", resp.Status)
 	}
 
-	var sexResponse responses.SexResponse
-	if err := json.NewDecoder(resp.Body).Decode(&sexResponse); err != nil {
+	var countryResponse responses.CountryResponse
+	if err := json.NewDecoder(resp.Body).Decode(&countryResponse); err != nil {
 		return nil, err
 	}
 
-	return &sexResponse, nil
+	return &countryResponse, nil
 }

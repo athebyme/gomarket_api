@@ -15,7 +15,7 @@ func NewWServer() *WholesalerServer {
 	return &WholesalerServer{}
 }
 
-func (s *WholesalerServer) Run() {
+func (s *WholesalerServer) Run(wg *chan struct{}) {
 	var db, err = postgres.ConnectToPostgreSQL()
 	if err != nil {
 		log.Printf("Error connecting to PostgreSQL: %s\n", err)
@@ -81,4 +81,5 @@ func (s *WholesalerServer) Run() {
 			price.Price, stocks.Stocks, stocks.MainArticular,
 		)
 	}
+	*wg <- struct{}{}
 }

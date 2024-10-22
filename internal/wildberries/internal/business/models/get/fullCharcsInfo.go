@@ -1,6 +1,6 @@
-package models
+package get
 
-type Characteristic struct {
+type FullCharcsInfo struct {
 	CharcID          int      `json:"charcID"`
 	SubjectName      string   `json:"subjectName"`
 	SubjectID        int      `json:"subjectID"`

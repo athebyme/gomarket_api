@@ -1,4 +1,4 @@
-package models
+package get
 
 type Country struct {
 	Name     string `json:"name"`

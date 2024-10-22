@@ -4,7 +4,9 @@ import (
 	"gomarketplace_api/build/_postgres"
 	"gomarketplace_api/config"
 	"gomarketplace_api/internal/wildberries/internal/business/dto/responses"
-	"gomarketplace_api/internal/wildberries/internal/business/services"
+	"gomarketplace_api/internal/wildberries/internal/business/models/dto/request"
+	"gomarketplace_api/internal/wildberries/internal/business/services/get"
+	"gomarketplace_api/internal/wildberries/internal/business/services/update"
 	"gomarketplace_api/pkg/dbconnect/migration"
 	"gomarketplace_api/pkg/dbconnect/postgres"
 	"log"
@@ -17,7 +19,8 @@ func NewWbServer() *WildberriesServer {
 	return &WildberriesServer{}
 }
 
-func (s *WildberriesServer) Run() {
+func (s *WildberriesServer) Run(wg *chan struct{}) {
+	<-*wg
 	cfg := config.GetMarketplaceConfig()
 	if cfg.ApiKey == "" {
 		log.Printf("wb api key not set\n")
@@ -41,8 +44,29 @@ func (s *WildberriesServer) Run() {
 	}
 	log.Println("WB migrations applied successfully!")
 
+	log.Printf("\n\n\n\nGetting cards")
+
+	var nomenclatures *responses.NomenclatureResponse
+	nomenclatures, err = update.GetNomenclature(request.Settings{
+		Sort:   request.Sort{Ascending: true},
+		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+		Cursor: request.Cursor{Limit: 100},
+	}, "")
+	if err != nil {
+		log.Fatalf("Error getting nomenclatures: %s\n", err)
+	}
+	for _, v := range nomenclatures.Data {
+		log.Printf("\nItem: %s", v.NmUUID)
+		log.Printf("\nNomenclature : %v", v.NmUUID)
+		log.Printf("\nPhotos: %v", v.Photos)
+		log.Println()
+	}
+}
+
+func checkFunctionality() {
+	var err error
 	var ping *responses.Ping
-	ping, err = services.Ping()
+	ping, err = get.Ping()
 	if err != nil {
 		log.Fatalf("Error pingig WB server : %s\n", err)
 	}
@@ -51,7 +75,7 @@ func (s *WildberriesServer) Run() {
 	// ----
 	cat_id := 5067
 	var charcs *responses.CharacteristicsResponse
-	charcs, err = services.GetItemCharcs(cat_id, "")
+	charcs, err = get.GetItemCharcs(cat_id, "")
 	if err != nil {
 		log.Fatalf("Error getting characters : %s\n", err)
 	}
@@ -62,7 +86,7 @@ func (s *WildberriesServer) Run() {
 	}
 
 	var colors *responses.ColorResponse
-	colors, err = services.GetColors("")
+	colors, err = get.GetColors("")
 	if err != nil {
 		log.Fatalf("Error getting colors: %s\n", err)
 	}
@@ -71,7 +95,7 @@ func (s *WildberriesServer) Run() {
 	}
 
 	var sex *responses.SexResponse
-	sex, err = services.GetSex("")
+	sex, err = get.GetSex("")
 	if err != nil {
 		log.Fatalf("Error getting sexes: %s\n", err)
 	}
@@ -80,7 +104,7 @@ func (s *WildberriesServer) Run() {
 	}
 
 	var countries *responses.CountryResponse
-	countries, err = services.GetCountries("")
+	countries, err = get.GetCountries("")
 	if err != nil {
 		log.Fatalf("Error getting countries: %s\n", err)
 	}
@@ -89,7 +113,7 @@ func (s *WildberriesServer) Run() {
 	}
 
 	var prodCardsLim *responses.ProductCardsLimitResponse
-	prodCardsLim, err = services.GetProductCardsLimit()
+	prodCardsLim, err = get.GetProductCardsLimit()
 	if err != nil {
 		log.Fatalf("Error getting product cards limit: %s\n", err)
 	}

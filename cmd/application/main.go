@@ -11,15 +11,17 @@ func main() {
 	log.Printf("\nStarted app\n")
 	wg := sync.WaitGroup{}
 
+	synchronize := make(chan struct{}, 1)
+
 	wg.Add(2)
 	go func() {
 		wserver := wsapp.NewWServer()
-		wserver.Run()
+		wserver.Run(&synchronize)
 		wg.Done()
 	}()
 	go func() {
 		wbserver := wbapp.NewWbServer()
-		wbserver.Run()
+		wbserver.Run(&synchronize)
 		wg.Done()
 	}()
 	wg.Wait()

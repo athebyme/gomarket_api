@@ -1,9 +1,11 @@
 package responses
 
-import "gomarketplace_api/internal/wildberries/internal/business/models"
+import (
+	"gomarketplace_api/internal/wildberries/internal/business/models/get"
+)
 
 type CharacteristicsResponse struct {
-	Data []models.Characteristic `json:"data"`
+	Data []get.FullCharcsInfo `json:"data"`
 }
 
 func (cr *CharacteristicsResponse) FilterPopularity() *CharacteristicsResponse {
@@ -16,7 +18,7 @@ func (cr *CharacteristicsResponse) FilterPopularity() *CharacteristicsResponse {
 	}
 
 	filtered := CharacteristicsResponse{}
-	filtered.Data = make([]models.Characteristic, popularCount)
+	filtered.Data = make([]get.FullCharcsInfo, popularCount)
 	ind := 0
 	for _, c := range cr.Data {
 		if c.Popular {

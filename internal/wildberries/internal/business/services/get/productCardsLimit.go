@@ -1,9 +1,10 @@
-package services
+package get
 
 import (
 	"encoding/json"
 	"fmt"
 	"gomarketplace_api/internal/wildberries/internal/business/dto/responses"
+	"gomarketplace_api/internal/wildberries/internal/business/services"
 	"net/http"
 	"time"
 )
@@ -20,7 +21,7 @@ func GetProductCardsLimit() (*responses.ProductCardsLimitResponse, error) {
 		return nil, err
 	}
 
-	SetAuthorizationHeader(req)
+	services.SetAuthorizationHeader(req)
 
 	resp, err := client.Do(req)
 	if err != nil {

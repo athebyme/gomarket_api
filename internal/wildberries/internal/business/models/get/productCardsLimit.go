@@ -1,4 +1,4 @@
-package models
+package get
 
 type ProductCardsLimit struct {
 	FreeLimits int `json:"freeLimits"`

@@ -1,18 +1,18 @@
-package services
+package get
 
 import (
 	"encoding/json"
 	"fmt"
 	"gomarketplace_api/internal/wildberries/internal/business/dto/responses"
+	"gomarketplace_api/internal/wildberries/internal/business/services"
 	"net/http"
 	"time"
 )
 
-const characteristicsURL = "https://content-api.wildberries.ru/content/v2/object/charcs/%d"
+const sexUrl = "https://content-api.wildberries.ru/content/v2/directory/kinds"
 
-func GetItemCharcs(subjectID int, locale string) (*responses.CharacteristicsResponse, error) {
-	url := fmt.Sprintf(characteristicsURL, subjectID)
-
+func GetSex(locale string) (*responses.SexResponse, error) {
+	url := sexUrl
 	if locale != "" {
 		url = fmt.Sprintf("%s?locale=%s", url, locale)
 	}
@@ -24,7 +24,7 @@ func GetItemCharcs(subjectID int, locale string) (*responses.CharacteristicsResp
 		return nil, err
 	}
 
-	SetAuthorizationHeader(req)
+	services.SetAuthorizationHeader(req)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -36,10 +36,10 @@ func GetItemCharcs(subjectID int, locale string) (*responses.CharacteristicsResp
 		return nil, fmt.Errorf("unexpected status code: %s", resp.Status)
 	}
 
-	var characteristicsResp responses.CharacteristicsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&characteristicsResp); err != nil {
+	var sexResponse responses.SexResponse
+	if err := json.NewDecoder(resp.Body).Decode(&sexResponse); err != nil {
 		return nil, err
 	}
 
-	return &characteristicsResp, nil
+	return &sexResponse, nil
 }

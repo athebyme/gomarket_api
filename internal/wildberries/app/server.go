@@ -60,4 +60,39 @@ func (s *WildberriesServer) Run() {
 	for _, v := range filtered.Data {
 		log.Printf("\nPopular characters : %s", v.Name)
 	}
+
+	var colors *responses.ColorResponse
+	colors, err = services.GetColors("")
+	if err != nil {
+		log.Fatalf("Error getting colors: %s\n", err)
+	}
+	for _, v := range colors.Data {
+		log.Printf("\nColor : %s", v.Name)
+	}
+
+	var sex *responses.SexResponse
+	sex, err = services.GetSex("")
+	if err != nil {
+		log.Fatalf("Error getting sexes: %s\n", err)
+	}
+	for _, v := range sex.Data {
+		log.Printf("\nSex : %s", v)
+	}
+
+	var countries *responses.CountryResponse
+	countries, err = services.GetCountries("")
+	if err != nil {
+		log.Fatalf("Error getting countries: %s\n", err)
+	}
+	for _, v := range countries.Data {
+		log.Printf("\nSex : %s", v)
+	}
+
+	var prodCardsLim *responses.ProductCardsLimitResponse
+	prodCardsLim, err = services.GetProductCardsLimit()
+	if err != nil {
+		log.Fatalf("Error getting product cards limit: %s\n", err)
+	}
+	log.Printf("\nProduct cards limit : %v", prodCardsLim.Data)
+
 }

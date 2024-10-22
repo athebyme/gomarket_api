@@ -1,9 +1,8 @@
 package app
 
 import (
-	business2 "gomarketplace_api/internal/wholesaler/internal/business"
-	"gomarketplace_api/internal/wholesaler/internal/products"
-	storage2 "gomarketplace_api/internal/wholesaler/internal/storage"
+	"gomarketplace_api/internal/wholesaler/internal/business"
+	"gomarketplace_api/internal/wholesaler/internal/storage"
 	"gomarketplace_api/pkg/dbconnect/migration"
 	"gomarketplace_api/pkg/dbconnect/postgres"
 	"log"
@@ -24,11 +23,13 @@ func (s *WholesalerServer) Run() {
 	defer db.Close()
 
 	migrationApply := []migration.MigrationInterface{
-		&products.WholesalerSchema{},
-		&products.WholesalerProducts{},
-		&products.WholesalerDescriptions{},
-		&products.WholesalerPrice{},
-		&products.WholesalerStock{},
+		&storage.WholesalerSchema{},
+		&storage.MigrationsSchema{},
+		&storage.WholesalerProducts{},
+		&storage.WholesalerDescriptions{},
+		&storage.WholesalerPrice{},
+		&storage.WholesalerStock{},
+		&storage.ProductSize{},
 	}
 
 	for _, _migration := range migrationApply {
@@ -38,25 +39,25 @@ func (s *WholesalerServer) Run() {
 	}
 	log.Println("Wholesaler migrations applied successfully!")
 
-	productRepo, err := storage2.NewProductRepository()
+	productRepo, err := storage.NewProductRepository()
 	if err != nil {
 		log.Fatalf("Failed to create product repository: %v", err)
 	}
-	productService := business2.NewProductService(productRepo)
+	productService := business.NewProductService(productRepo)
 	defer productRepo.Close()
 
-	priceRepo, err := storage2.NewPriceRepository()
+	priceRepo, err := storage.NewPriceRepository()
 	if err != nil {
 		log.Fatalf("Failed to create product repository: %v", err)
 	}
-	priceService := business2.NewPriceService(priceRepo)
+	priceService := business.NewPriceService(priceRepo)
 	defer priceRepo.Close()
 
-	stocksRepo, err := storage2.NewStocksRepository()
+	stocksRepo, err := storage.NewStocksRepository()
 	if err != nil {
 		log.Fatalf("Failed to create stocks repository: %v", err)
 	}
-	stocksService := business2.NewStockService(stocksRepo)
+	stocksService := business.NewStockService(stocksRepo)
 	defer stocksRepo.Close()
 
 	id := []int{9575, 1, 9574, 9778}

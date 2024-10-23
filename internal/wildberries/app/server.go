@@ -6,7 +6,6 @@ import (
 	"gomarketplace_api/internal/wildberries/internal/business/dto/responses"
 	"gomarketplace_api/internal/wildberries/internal/business/models/dto/request"
 	"gomarketplace_api/internal/wildberries/internal/business/services/get"
-	"gomarketplace_api/internal/wildberries/internal/business/services/update"
 	"gomarketplace_api/pkg/dbconnect/migration"
 	"gomarketplace_api/pkg/dbconnect/postgres"
 	"log"
@@ -32,9 +31,9 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	defer db.Close()
 
 	migrationApply := []migration.MigrationInterface{
-		&_postgres.CreateWildberriesSchema{},
-		&_postgres.CreateCategoriesTable{},
-		&_postgres.CreateProductsTable{},
+		&_postgres.CreateWBSchema{},
+		&_postgres.CreateWBCategoriesTable{},
+		&_postgres.CreateWBProductsTable{},
 	}
 
 	for _, _migration := range migrationApply {
@@ -44,21 +43,38 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	}
 	log.Println("WB migrations applied successfully!")
 
+	cat_id := 5070
+	var charcs *responses.CharacteristicsResponse
+	charcs, err = get.GetItemCharcs(cat_id, "")
+	if err != nil {
+		log.Fatalf("Error getting characters: %s\n", err)
+	}
+	for _, v := range charcs.Data {
+		log.Printf(
+			"\ncharcID : %d,"+
+				"\nsubjectName : %s"+
+				"\nsubjectID : %d"+
+				"\nname : %s"+
+				"\nrequired : %v"+
+				"\nunitName : %s"+
+				"\nmaxCount : %d"+
+				"\npopular : %v"+
+				"\ncharcType : %d\n--------------------\n", v.CharcID, v.SubjectName, v.SubjectID, v.Name, v.Required, v.UnitName, v.MaxCount, v.Popular, v.CharcType)
+	}
+
 	log.Printf("\n\n\n\nGetting cards")
 
 	var nomenclatures *responses.NomenclatureResponse
-	nomenclatures, err = update.GetNomenclature(request.Settings{
+	nomenclatures, err = get.GetNomenclature(request.Settings{
 		Sort:   request.Sort{Ascending: true},
 		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-		Cursor: request.Cursor{Limit: 100},
+		Cursor: request.Cursor{Limit: 1},
 	}, "")
 	if err != nil {
 		log.Fatalf("Error getting nomenclatures: %s\n", err)
 	}
 	for _, v := range nomenclatures.Data {
-		log.Printf("\nItem: %s", v.NmUUID)
-		log.Printf("\nNomenclature : %v", v.NmUUID)
-		log.Printf("\nPhotos: %v", v.Photos)
+		log.Printf("\nSubID: %v", v.SubjectID)
 		log.Println()
 	}
 }
@@ -81,9 +97,7 @@ func checkFunctionality() {
 	}
 
 	filtered := charcs.FilterPopularity()
-	for _, v := range filtered.Data {
-		log.Printf("\nPopular characters : %s", v.Name)
-	}
+	log.Printf("\nCharacters : %v", filtered.Data)
 
 	var colors *responses.ColorResponse
 	colors, err = get.GetColors("")

@@ -215,12 +215,6 @@ func migrateAndParse(db *sql.DB) error {
 		CREATE TABLE IF NOT EXISTS wholesaler.sizes (
 			size_id SERIAL PRIMARY KEY,
 			global_id INT,
-			length DECIMAL(10, 2),
-			depth DECIMAL(10, 2),
-			width DECIMAL(10, 2),
-			volume DECIMAL(10, 2),
-			weight DECIMAL(10, 2),
-			diameter DECIMAL(10, 2),
 			FOREIGN KEY (global_id) REFERENCES wholesaler.products(global_id)
 		);
 	`
@@ -254,8 +248,8 @@ func migrateAndParse(db *sql.DB) error {
 	defer rows.Close()
 
 	insertSizeStmt, err := db.Prepare(`
-		INSERT INTO wholesaler.sizes (global_id, length, depth, width, volume, weight, diameter)
-		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING size_id
+		INSERT INTO wholesaler.sizes (global_id)
+		VALUES ($1) RETURNING size_id
 	`)
 	if err != nil {
 		return fmt.Errorf("failed to prepare insert statement for sizes: %w", err)
@@ -294,7 +288,7 @@ func processProducts(db *sql.DB) error {
 
 	// Подготавливаем запросы *вне* цикла
 	insertSizeStmt, err := db.Prepare(
-		"INSERT INTO wholesaler.sizes (global_id, length, depth, width, volume, weight, diameter) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING size_id")
+		"INSERT INTO wholesaler.sizes (global_id) VALUES ($1) RETURNING size_id")
 	if err != nil {
 		return fmt.Errorf("failed to prepare insertSize statement: %w", err)
 	}
@@ -325,7 +319,7 @@ func processProducts(db *sql.DB) error {
 		}
 
 		var sizeID int
-		err = insertSizeStmt.QueryRow(globalID, sizeMap[LENGTH], sizeMap[DEPTH], sizeMap[WIDTH], sizeMap[VOLUME], sizeMap[WEIGHT], sizeMap[DIAMETER]).Scan(&sizeID)
+		err = insertSizeStmt.QueryRow(globalID).Scan(&sizeID)
 		if err != nil {
 			return fmt.Errorf("failed to insert into sizes for globalID %d: %w", globalID, err) // Более информативное сообщение
 		}

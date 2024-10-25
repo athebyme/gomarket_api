@@ -9,6 +9,9 @@ import (
 type CreateWBProductsTable struct{}
 
 func (m *CreateWBProductsTable) UpMigration(db *sql.DB) error {
+	if err := checkAndSkipMigration(db, "wildberries.products"); err != nil {
+		return err
+	}
 	query := `
 	CREATE TABLE IF NOT EXISTS wildberries.products (
 		global_id INT PRIMARY KEY,
@@ -16,16 +19,19 @@ func (m *CreateWBProductsTable) UpMigration(db *sql.DB) error {
 		distance FLOAT NOT NULL,
 	    FOREIGN KEY (category_id) REFERENCES wildberries.categories(category_id)
 	);`
-	_, err := db.Exec(query)
-	if err != nil {
-		return fmt.Errorf("failed to create wildberries.products table: %w", err)
+	if err := executeAndMarkMigration(db, query, "wildberries.products"); err != nil {
+		return err
 	}
+	log.Println("Migration 'wildberries.products' completed successfully.")
 	return nil
 }
 
 type CreateWBCategoriesTable struct{}
 
 func (m *CreateWBCategoriesTable) UpMigration(db *sql.DB) error {
+	if err := checkAndSkipMigration(db, "wildberries.categories"); err != nil {
+		return err
+	}
 	query := `
 	CREATE TABLE IF NOT EXISTS wildberries.categories (
 		category_id INT PRIMARY KEY,
@@ -33,10 +39,10 @@ func (m *CreateWBCategoriesTable) UpMigration(db *sql.DB) error {
 		parent_category_id INT,
 		parent_category_name VARCHAR(255) NOT NULL
 	);`
-	_, err := db.Exec(query)
-	if err != nil {
-		return fmt.Errorf("failed to create wildberries.categories table: %w", err)
+	if err := executeAndMarkMigration(db, query, "wildberries.categories"); err != nil {
+		return err
 	}
+	log.Println("Migration 'wildberries.categories' completed successfully.")
 	return nil
 }
 
@@ -52,10 +58,13 @@ func (m *CreateWBSchema) UpMigration(db *sql.DB) error {
 	return nil
 }
 
+/*
+Вопрос: нужно ли это хранить в бд ?
+*/
 type WBNomenclatures struct{}
 
 func (m *WBNomenclatures) UpMigration(db *sql.DB) error {
-	if err := checkAndSkipMigration(db, "wholesaler.products"); err != nil {
+	if err := checkAndSkipMigration(db, "wildberries.nomenclatures"); err != nil {
 		return err
 	}
 
@@ -92,15 +101,17 @@ func (m *WholesalerCharacteristics) UpMigration(db *sql.DB) error {
 	}
 
 	query := `
-		CREATE TABLE IF NOT EXISTS wholesaler.characteristics (
+		CREATE TABLE IF NOT EXISTS wildberries.characteristics (
 			id SERIAL PRIMARY KEY,
 			charc_id INT UNIQUE,
-			name TEXT,
+			subjectName VARCHAR(255),
 			required BOOLEAN,
-			subject_id INT, -- Внешний ключ к категории
+			subject_id INT,
+		    unit_name VARCHAR(15),
+		    max_count INT,
 			popular BOOLEAN,
-            -- Другие поля характеристики
-			FOREIGN KEY (subject_id) REFERENCES wholesaler.categories(category_id)
+		    charc_type INT,
+			FOREIGN KEY (subject_id) REFERENCES wildberries.categories(category_id)
 		);
 	`
 

@@ -34,6 +34,7 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 		&_postgres.CreateWBSchema{},
 		&_postgres.CreateWBCategoriesTable{},
 		&_postgres.CreateWBProductsTable{},
+		&_postgres.WholesalerCharacteristics{},
 	}
 
 	for _, _migration := range migrationApply {

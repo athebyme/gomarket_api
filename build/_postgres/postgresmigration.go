@@ -77,7 +77,7 @@ func (m *WBNomenclatures) UpMigration(db *sql.DB) error {
 	query := `
 		CREATE TABLE IF NOT EXISTS wildberries.nomenclatures (
 		    nomenclature_id SERIAL PRIMARY KEY,
-			global_id INT,
+			global_id INT UNIQUE ,
 			nm_id INT UNIQUE,	
 			imt_id INT UNIQUE,
             nm_uuid UUID UNIQUE,

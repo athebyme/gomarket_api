@@ -13,7 +13,11 @@ func main() {
 
 	synchronize := make(chan struct{}, 1)
 
-	wg.Add(2)
+	wg.Add(3)
+	go func() {
+		wsapp.SetupRoutes()
+		wg.Done()
+	}()
 	go func() {
 		wserver := wsapp.NewWServer()
 		wserver.Run(&synchronize)

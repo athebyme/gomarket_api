@@ -1,11 +1,13 @@
 package app
 
 import (
+	"encoding/json"
 	"gomarketplace_api/internal/wholesaler/internal/business"
 	"gomarketplace_api/internal/wholesaler/internal/storage"
 	"gomarketplace_api/pkg/dbconnect/migration"
 	"gomarketplace_api/pkg/dbconnect/postgres"
 	"log"
+	"net/http"
 )
 
 type WholesalerServer struct {
@@ -82,4 +84,55 @@ func (s *WholesalerServer) Run(wg *chan struct{}) {
 		)
 	}
 	*wg <- struct{}{}
+}
+
+func getGlobalIDsHandler(w http.ResponseWriter, r *http.Request) {
+	repo, err := storage.NewProductRepository()
+	if err != nil {
+		log.Fatalf("Failed to create product repository: %v", err)
+		return
+	}
+	productService := business.NewProductService(repo)
+	globalIDs, err := productService.GetAllGlobalIDs()
+	if err != nil {
+		http.Error(w, "Failed to fetch Global IDs", http.StatusInternalServerError)
+		return
+	}
+
+	// ?
+	defer repo.Close()
+
+	err = json.NewEncoder(w).Encode(globalIDs)
+	if err != nil {
+		log.Printf("Failed to fetch Appellations: %v", err)
+	}
+}
+
+func getAppellationHandler(w http.ResponseWriter, r *http.Request) {
+	repo, err := storage.NewProductRepository()
+	if err != nil {
+		log.Fatalf("Failed to create product repository: %v", err)
+		return
+	}
+	productService := business.NewProductService(repo)
+	appellations, err := productService.GetAllAppellations()
+	if err != nil {
+		http.Error(w, "Failed to fetch Global IDs", http.StatusInternalServerError)
+		return
+	}
+
+	// ?
+	defer repo.Close()
+
+	err = json.NewEncoder(w).Encode(appellations)
+	if err != nil {
+		log.Printf("Failed to fetch Appellations: %v", err)
+	}
+}
+
+func SetupRoutes() {
+	http.HandleFunc("/api/globalids", getGlobalIDsHandler)
+	http.HandleFunc("/api/appellations", getAppellationHandler)
+	log.Printf("Запущен сервис /api/globalids")
+	log.Fatal(http.ListenAndServe(":8081", nil))
 }

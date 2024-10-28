@@ -9,6 +9,7 @@ import (
 	"gomarketplace_api/internal/wildberries/internal/business/dto/responses"
 	"gomarketplace_api/internal/wildberries/internal/business/models/dto/request"
 	"gomarketplace_api/internal/wildberries/internal/business/services"
+	"gomarketplace_api/internal/wildberries/pkg/clients"
 	"log"
 	"net/http"
 	"strings"
@@ -68,12 +69,13 @@ func NewUpdateDBNomenclature(db *sql.DB) *UpdateDBNomenclature {
 Возвращает число обновленных(добавленных) карточек
 */
 func (d *UpdateDBNomenclature) UpdateNomenclature(settings request.Settings, locale string) (int, error) {
+	log.Printf("Updating wildberries.nomenclatures")
 	const batchSize = 5
 	updated := 0
 	var batch []interface{}
 
 	// Получаем существующие номенклатуры из БД
-	existCharc, err := d.getAllNomenclatures()
+	existIDs, err := d.getAllNomenclatures()
 	if err != nil {
 		return updated, err
 	}
@@ -87,6 +89,19 @@ func (d *UpdateDBNomenclature) UpdateNomenclature(settings request.Settings, loc
 		r, b = 1, 1
 	}
 	limiter := rate.NewLimiter(rate.Limit(r), b)
+	client := clients.NewGlobalIDsClient("http://localhost:8081")
+
+	// список всех global ids в wholesaler.products
+	globalIDs, err := client.FetchGlobalIDs()
+	if err != nil {
+		log.Fatalf("Error fetching Global IDs: %s", err)
+	}
+
+	globalIDsMap := make(map[int]struct{}, len(globalIDs))
+
+	for _, globalID := range globalIDs {
+		globalIDsMap[globalID] = struct{}{}
+	}
 
 	for {
 		if err := limiter.Wait(context.Background()); err != nil {
@@ -101,28 +116,32 @@ func (d *UpdateDBNomenclature) UpdateNomenclature(settings request.Settings, loc
 
 		// Обрабатываем номенклатуры
 		for _, nomenclature := range nomenclatureResponse.Data {
-			global_id, err := nomenclature.GlobalID()
+			globalId, err := nomenclature.GlobalID()
 			if err != nil {
 				return updated, fmt.Errorf("failed to get global_id: %w", err)
 			}
-			if _, exists := existCharc[global_id]; exists {
-				continue // Пропускаем существующие записи
+			if _, exists := existIDs[globalId]; exists {
+				continue // Пропускаем существующие записи в таблице wildberries.nomenclatures
 			}
-			if global_id == 0 {
+
+			if _, exists := globalIDsMap[globalId]; !exists {
+				continue // Пропускаем НЕ существующие записи в таблице wholesaler.products по global id
+			}
+			if globalId == 0 {
 				continue
 			}
 
 			log.Printf("updated=%d", updated)
-			batch = append(batch, global_id, nomenclature.NmID, nomenclature.ImtID,
+			batch = append(batch, globalId, nomenclature.NmID, nomenclature.ImtID,
 				nomenclature.NmUUID, nomenclature.VendorCode, nomenclature.SubjectID,
 				nomenclature.Brand, nomenclature.CreatedAt, nomenclature.UpdatedAt)
 
-			if len(batch) >= batchSize*12 { // Проверяем размер батча
+			if len(batch) >= batchSize*12 {
 				if err := d.insertBatchNomenclatures(batch); err != nil {
 					return updated, fmt.Errorf("failed to insert batch: %w", err)
 				}
-				updated += len(batch) / 12 // Обновляем счетчик
-				batch = batch[:0]          // Очищаем батч
+				updated += len(batch) / 12
+				batch = batch[:0]
 			}
 		}
 
@@ -131,7 +150,7 @@ func (d *UpdateDBNomenclature) UpdateNomenclature(settings request.Settings, loc
 			break
 		}
 
-		settings.Cursor.Pagination = nomenclatureResponse.Paginator
+		settings.Cursor.Pagination = nomenclatureResponse.Paginator.GetPaginatorCursor()
 	}
 
 	// Вставка оставшегося батча
@@ -157,6 +176,10 @@ func (d *UpdateDBNomenclature) insertBatchNomenclatures(batch []interface{}) err
 	}
 
 	query += strings.Join(valueStrings, ", ")
+	/*
+		нужна проверка на то, что добавляемый global_id точно есть в таблице wholesaler.products иначе вылетит паника
+		2024-10-28 08:40:27.585 UTC [68] DETAIL:  Key (global_id)=(25268) is not present in table "products".
+	*/
 	query += `
 		ON CONFLICT (global_id) DO UPDATE
 		SET nm_id = EXCLUDED.nm_id,

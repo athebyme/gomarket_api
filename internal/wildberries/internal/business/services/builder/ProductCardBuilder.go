@@ -1,13 +1,19 @@
 package builder
 
-import "gomarketplace_api/internal/wildberries/internal/business/models/dto/response"
+import (
+	"gomarketplace_api/internal/wildberries/internal/business/models/dto/response"
+	"gomarketplace_api/internal/wildberries/internal/business/models/get"
+)
 
 type ProductCardBuilder struct {
-	card *response.Nomenclature
+	card         *get.WildberriesCard
+	nomenclature *response.Nomenclature
 }
 
 func NewProductCardBuilder() *ProductCardBuilder {
-	return &ProductCardBuilder{card: &response.Nomenclature{}}
+	return &ProductCardBuilder{
+		card:         &get.WildberriesCard{},
+		nomenclature: &response.Nomenclature{}}
 }
 func (b *ProductCardBuilder) WithNmID(nmID int) *ProductCardBuilder {
 	b.card.NmID = nmID
@@ -30,37 +36,18 @@ func (b *ProductCardBuilder) WithTitle(title string) *ProductCardBuilder {
 }
 
 func (b *ProductCardBuilder) WithDescription(desc string) *ProductCardBuilder {
-	b.card. = desc
+	b.card.Description = desc
 	return b
 }
 
-func (b *ProductCardBuilder) WithDimensions(length, width, height int) *ProductCardBuilder {
-	b.card.Dimensions = &models.Dimensions{
-		Length: length,
-		Width:  width,
-		Height: height,
+func (b *ProductCardBuilder) WithNomenclature(n response.Nomenclature) *ProductCardBuilder {
+	b.nomenclature = &n
+	return b
+}
+func (b *ProductCardBuilder) CardInfoFromNomenclature() *ProductCardBuilder {
+	if b.nomenclature == nil {
+		return b
 	}
+	b.card = b.card.FromNomenclature(*b.nomenclature)
 	return b
-}
-
-func (b *ProductCardBuilder) WithCharacteristics(characteristics []responses.Characteristic) *ProductCardBuilder {
-	for _, ch := range characteristics {
-		b.card.Characteristics = append(b.card.Characteristics, models.Characteristic{Name: ch.Name, Value: ch.Value})
-	}
-	return b
-}
-
-func (b *ProductCardBuilder) WithSizes(sizes []responses.Size) *ProductCardBuilder {
-	for _, size := range sizes {
-		b.card.Sizes = append(b.card.Sizes, models.Size{
-			WbSize:  size.WbSize,
-			TechSize: size.TechSize,
-			Barcode:  size.Barcode,
-		})
-	}
-	return b
-}
-
-func (b *ProductCardBuilder) Build() *models.ProductCard {
-	return b.card
 }

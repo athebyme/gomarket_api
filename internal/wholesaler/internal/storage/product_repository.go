@@ -10,7 +10,7 @@ import (
 )
 
 type ProductRepository struct {
-	DB *sql.DB
+	db *sql.DB
 }
 
 func NewProductRepository() (*ProductRepository, error) {
@@ -29,7 +29,7 @@ func NewProductRepository() (*ProductRepository, error) {
 
 	log.Println("Successfully created wholesaler price repository")
 
-	return &ProductRepository{DB: db}, nil
+	return &ProductRepository{db: db}, nil
 }
 
 func (r *ProductRepository) Insert(product *models.Product) error {
@@ -43,7 +43,7 @@ func (r *ProductRepository) Insert(product *models.Product) error {
 		)
 		RETURNING global_id`
 
-	err := r.DB.QueryRow(
+	err := r.db.QueryRow(
 		query,
 		product.Model, product.Appellation, product.Category, product.Brand, product.Country,
 		product.ProductType, product.Features, product.Sex, product.Color,
@@ -64,7 +64,7 @@ func (r *ProductRepository) GetProductByID(id int) (*models.Product, error) {
 			  FROM wholesaler.products WHERE global_id = $1`
 
 	var product models.Product
-	err := r.DB.QueryRow(query, id).Scan(
+	err := r.db.QueryRow(query, id).Scan(
 		&product.ID, &product.Model, &product.Appellation, &product.Category, &product.Brand, &product.Country,
 		&product.ProductType, &product.Features, &product.Sex, &product.Color,
 		&product.Dimension, &product.Package, &product.Media, &product.Barcodes,
@@ -89,7 +89,7 @@ func (r *ProductRepository) Update(product *models.Product) error {
 			material = $14, package_battery = $15
 		WHERE global_id = $16`
 
-	_, err := r.DB.Exec(
+	_, err := r.db.Exec(
 		query,
 		product.Model, product.Appellation, product.Category, product.Brand, product.Country,
 		product.ProductType, product.Features, product.Sex, product.Color,
@@ -107,7 +107,7 @@ func (r *ProductRepository) Update(product *models.Product) error {
 func (r *ProductRepository) Delete(id int) error {
 	query := `DELETE FROM wholesaler.products WHERE global_id = $1`
 
-	_, err := r.DB.Exec(query, id)
+	_, err := r.db.Exec(query, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete product: %w", err)
 	}
@@ -115,6 +115,53 @@ func (r *ProductRepository) Delete(id int) error {
 	return nil
 }
 
+func (r *ProductRepository) GetGlobalIDs() ([]int, error) {
+	query := `SELECT global_id FROM wholesaler.products`
+
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return []int{}, fmt.Errorf("ошибка выполнения запроса для получения globalIDs: %w", err)
+	}
+	defer rows.Close()
+
+	var globalIDs []int
+	// заполняем срез category_id из результата запроса
+	for rows.Next() {
+		var globalId int
+		if err := rows.Scan(&globalId); err != nil {
+			return []int{}, fmt.Errorf("ошибка сканирования globalID: %w", err)
+		}
+		globalIDs = append(globalIDs, globalId)
+	}
+	return globalIDs, nil
+}
+
+func (r *ProductRepository) GetAppellations() (map[int]string, error) {
+	query := `SELECT global_id, appellation FROM wholesaler.products`
+
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка выполнения запроса для получения globalIDs: %w", err)
+	}
+	defer rows.Close()
+
+	appellations := make(map[int]string)
+	for rows.Next() {
+		var globalId int
+		var appellation string
+		if err := rows.Scan(&globalId, &appellation); err != nil {
+			return nil, fmt.Errorf("ошибка сканирования globalID: %w", err)
+		}
+		appellations[globalId] = appellation
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ошибка при итерации по строкам: %w", err)
+	}
+
+	return appellations, nil
+}
+
 func (r *ProductRepository) Close() error {
-	return r.DB.Close()
+	return r.db.Close()
 }

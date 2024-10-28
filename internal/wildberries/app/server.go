@@ -6,6 +6,7 @@ import (
 	"gomarketplace_api/internal/wildberries/internal/business/dto/responses"
 	"gomarketplace_api/internal/wildberries/internal/business/models/dto/request"
 	"gomarketplace_api/internal/wildberries/internal/business/services/get"
+	update2 "gomarketplace_api/internal/wildberries/internal/business/services/update"
 	"gomarketplace_api/pkg/dbconnect/migration"
 	"gomarketplace_api/pkg/dbconnect/postgres"
 	"log"
@@ -94,7 +95,7 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	//for i, v := range cats {
 	//	catIDs[i] = v.SubjectID
 	//}
-
+	//
 	//update := get.NewUpdateDBCharcs(db)
 	//count, err := update.UpdateDBCharcs(catIDs)
 	//if err != nil {
@@ -102,16 +103,27 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	//}
 	//log.Printf("\n\n\nUpdated %d charcs\n", count)
 
-	update_nomenclatures := get.NewUpdateDBNomenclature(db)
-	cnt, err := update_nomenclatures.UpdateNomenclature(request.Settings{
-		Sort:   request.Sort{Ascending: true},
+	//update_nomenclatures := get.NewUpdateDBNomenclature(db)
+	//cnt, err := update_nomenclatures.UpdateNomenclature(request.Settings{
+	//	Sort:   request.Sort{Ascending: false},
+	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+	//	Cursor: request.Cursor{Limit: 100},
+	//}, "")
+	//if err != nil {
+	//	log.Fatalf("Error updating nomenclatures: %s\n", err)
+	//}
+	//log.Printf("\n\n\nUpdated %d nomenclatures\n", cnt)
+
+	updateAppellations, err := update2.UpdateCardAppellation(request.Settings{
+		Sort:   request.Sort{Ascending: false},
 		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-		Cursor: request.Cursor{Limit: 100},
-	}, "")
+		Cursor: request.Cursor{Limit: 2},
+	})
+
 	if err != nil {
 		log.Fatalf("Error updating nomenclatures: %s\n", err)
 	}
-	log.Printf("\n\n\nUpdated %d nomenclatures\n", cnt)
+	log.Printf("\n\n\nUpdated %d nomenclatures\n", updateAppellations)
 }
 
 func checkFunctionality() {

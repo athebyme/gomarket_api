@@ -99,3 +99,19 @@ func (s *ProductService) DeleteProduct(id int) error {
 	log.Printf("Deleted product with ID: %d", id)
 	return nil
 }
+
+func (s *ProductService) GetAllGlobalIDs() ([]int, error) {
+	res, err := s.repo.GetGlobalIDs()
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func (s *ProductService) GetAllAppellations() (map[int]string, error) {
+	res, err := s.repo.GetAppellations()
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}

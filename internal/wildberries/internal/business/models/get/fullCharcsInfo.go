@@ -1,7 +1,7 @@
 package get
 
 type FullCharcsInfo struct {
-	CharcID          int      `json:"charcID"`
+	ID               int      `json:"charcID"`
 	SubjectName      string   `json:"subjectName"`
 	SubjectID        int      `json:"subjectID"`
 	Name             string   `json:"name"`

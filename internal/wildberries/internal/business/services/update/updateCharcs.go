@@ -23,14 +23,14 @@ func UpdateProduct(nmID int, imtID int, productData map[string]interface{}) erro
 	for _, charc := range categoryCharcs {
 		if val, ok := productData[charc.Name]; ok {
 			newCharacteristics = append(newCharacteristics, response.Charc{
-				Id:    charc.CharcID,
+				Id:    charc.ID,
 				Name:  charc.Name,
 				Value: []string{fmt.Sprintf("%v", val)},
 			})
 			delete(productData, charc.Name)
 		} else if charc.Required {
 			for _, existingCharc := range existingProduct.Characteristics {
-				if existingCharc.Id == charc.CharcID {
+				if existingCharc.Id == charc.ID {
 					newCharacteristics = append(newCharacteristics, existingCharc)
 					break
 				}

@@ -1,5 +1,10 @@
 package response
 
+import (
+	"regexp"
+	"strconv"
+)
+
 type Nomenclature struct {
 	NmID            int        `json:"nmID"`
 	ImtID           int        `json:"imtID"`
@@ -17,4 +22,11 @@ type Nomenclature struct {
 	Tags            []Tag      `json:"tags"`
 	CreatedAt       string     `json:"createdAt"`
 	UpdatedAt       string     `json:"updatedAt"`
+}
+
+func (n *Nomenclature) GlobalID() (int, error) {
+	pattern := `\w*-(\d*)-\w*`
+	re := regexp.MustCompile(pattern)
+	match := re.FindAllStringSubmatch(n.VendorCode, -1)
+	return strconv.Atoi(match[0][1])
 }

@@ -1,9 +1,11 @@
 package get
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"gomarketplace_api/internal/wildberries/internal/business/dto/responses"
+	"gomarketplace_api/internal/wildberries/internal/business/models/dto/response"
 	"gomarketplace_api/internal/wildberries/internal/business/services"
 	"net/http"
 	"net/url"
@@ -51,6 +53,47 @@ func GetCategories(name, locale string, limit, offset, parentID int) (*responses
 	}
 
 	return &categoriesResponse, nil
+}
+
+type DBCategories struct {
+	db *sql.DB
+}
+
+func NewDBCategories(db *sql.DB) *DBCategories {
+	return &DBCategories{db}
+}
+
+func (c *DBCategories) Categories() ([]response.Category, error) {
+	query := `
+		SELECT category_id, parent_category_id, category, parent_category_name
+		FROM wildberries.categories
+	`
+
+	// Выполняем запрос к базе данных
+	rows, err := c.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка выполнения запроса категорий: %w", err)
+	}
+	defer rows.Close()
+
+	// Инициализируем срез для хранения категорий
+	var categories []response.Category
+
+	// Проходим по результатам запроса и сканируем данные в структуру Category
+	for rows.Next() {
+		var category response.Category
+		if err := rows.Scan(&category.SubjectID, &category.ParentID, &category.SubjectName, &category.ParentName); err != nil {
+			return nil, fmt.Errorf("ошибка сканирования данных категории: %w", err)
+		}
+		categories = append(categories, category)
+	}
+
+	// Проверяем ошибки после цикла rows.Next()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ошибка чтения строк: %w", err)
+	}
+
+	return categories, nil
 }
 
 // buildCategoriesURL формирует URL для запроса категорий, добавляя параметры локали, лимита, смещения и родительского ID.

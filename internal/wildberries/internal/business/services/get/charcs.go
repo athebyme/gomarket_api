@@ -1,12 +1,16 @@
 package get
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/time/rate"
 	"gomarketplace_api/internal/wildberries/internal/business/dto/responses"
 	"gomarketplace_api/internal/wildberries/internal/business/services"
+	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -14,7 +18,6 @@ const characteristicsURL = "https://content-api.wildberries.ru/content/v2/object
 
 func GetItemCharcs(subjectID int, locale string) (*responses.CharacteristicsResponse, error) {
 	url := fmt.Sprintf(characteristicsURL, subjectID)
-
 	if locale != "" {
 		url = fmt.Sprintf("%s?locale=%s", url, locale)
 	}
@@ -44,6 +47,125 @@ func GetItemCharcs(subjectID int, locale string) (*responses.CharacteristicsResp
 	}
 
 	return &characteristicsResp, nil
+}
+
+type UpdateDBCharcs struct {
+	db *sql.DB
+}
+
+func NewUpdateDBCharcs(db *sql.DB) *UpdateDBCharcs {
+	return &UpdateDBCharcs{db: db}
+}
+
+func (d *UpdateDBCharcs) UpdateDBCharcs(subjectIDs []int) (int, error) {
+	const batchSize = 5 // Размер пачки для вставки
+	updated := 0
+	var batch []interface{}
+	existCharc, err := d.getAllCharcsInDb()
+	if err != nil {
+		return updated, err
+	}
+	limiter := rate.NewLimiter(5, 5)
+
+	log.Printf("looking for (subjectID=%v)", subjectIDs)
+	for _, subjectID := range subjectIDs {
+
+		log.Printf("%d", subjectID)
+		if err := limiter.Wait(context.Background()); err != nil {
+			return -1, err
+		}
+		response, err := GetItemCharcs(subjectID, "")
+		if err != nil {
+			return -1, err
+		}
+		data := response.Data
+		for _, charc := range data {
+			// Добавляем данные в батч
+			if _, ok := existCharc[charc.ID]; ok {
+				log.Printf("(subjectID=%d) (charcID=%d) already exists", subjectID, charc.ID)
+				continue
+			}
+			batch = append(batch, charc.ID, charc.Name, charc.Required, subjectID, charc.UnitName, charc.MaxCount, charc.Popular, charc.CharcType)
+
+			// Если собрали полную пачку, то отправляем её в базу
+			if len(batch)/8 >= batchSize {
+				if err := d.insertBatch(batch); err != nil {
+					return updated, err
+				}
+				updated += batchSize
+				batch = batch[:0] // Очищаем батч после отправки
+			}
+			existCharc[charc.ID] = struct{}{}
+		}
+
+	}
+
+	// Если остались записи в батче, отправляем их
+	if len(batch) > 0 {
+		if err := d.insertBatch(batch); err != nil {
+			return updated, err
+		}
+		updated += len(batch) / 8
+	}
+
+	return updated, nil
+}
+
+func (d *UpdateDBCharcs) insertBatch(batch []interface{}) error {
+	query := `
+		INSERT INTO wildberries.characteristics (charc_id, name, required, subject_id, unit_name, max_count, popular, charc_type)
+		VALUES `
+
+	// Строим запрос со значениями
+	valueStrings := []string{}
+	for i := 0; i < len(batch)/8; i++ {
+		valueStrings = append(valueStrings, fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)", i*8+1, i*8+2, i*8+3, i*8+4, i*8+5, i*8+6, i*8+7, i*8+8))
+	}
+
+	query += strings.Join(valueStrings, ", ")
+	query += `
+		ON CONFLICT (charc_id) DO UPDATE
+		SET name = EXCLUDED.name,
+			required = EXCLUDED.required,
+			subject_id = EXCLUDED.subject_id,
+			unit_name = EXCLUDED.unit_name,
+			max_count = EXCLUDED.max_count,
+			popular = EXCLUDED.popular,
+			charc_type = EXCLUDED.charc_type;
+	`
+
+	// Выполняем запрос с батчем параметров
+	_, err := d.db.Exec(query, batch...)
+	return err
+}
+
+func (d *UpdateDBCharcs) getAllCharcsInDb() (map[int]struct{}, error) {
+	// запрос для получения списка category_id
+	query := `SELECT charc_id FROM wildberries.characteristics`
+
+	// создаем срез для хранения category_id
+	charcIDs := make(map[int]struct{}, 1)
+	rows, err := d.db.Query(query)
+	if err != nil {
+		return map[int]struct{}{}, fmt.Errorf("ошибка выполнения запроса для категорий: %w", err)
+	}
+	defer rows.Close()
+
+	// заполняем срез category_id из результата запроса
+	for rows.Next() {
+		var catID int
+		if err := rows.Scan(&catID); err != nil {
+			return map[int]struct{}{}, fmt.Errorf("ошибка сканирования cat_id: %w", err)
+		}
+		charcIDs[catID] = struct{}{}
+	}
+
+	// проверяем ошибки после цикла rows.Next()
+	if err := rows.Err(); err != nil {
+		return map[int]struct{}{}, fmt.Errorf("ошибка чтения строк: %w", err)
+	}
+
+	return charcIDs, nil
 }
 
 /*

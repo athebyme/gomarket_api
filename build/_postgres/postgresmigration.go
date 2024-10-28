@@ -9,8 +9,10 @@ import (
 type CreateWBProductsTable struct{}
 
 func (m *CreateWBProductsTable) UpMigration(db *sql.DB) error {
-	if err := checkAndSkipMigration(db, "wildberries.products"); err != nil {
+	if ok, err := checkAndSkipMigration(db, "wildberries.products"); err != nil {
 		return err
+	} else if ok {
+		return nil
 	}
 	query := `
 	CREATE TABLE IF NOT EXISTS wildberries.products (
@@ -29,8 +31,10 @@ func (m *CreateWBProductsTable) UpMigration(db *sql.DB) error {
 type CreateWBCategoriesTable struct{}
 
 func (m *CreateWBCategoriesTable) UpMigration(db *sql.DB) error {
-	if err := checkAndSkipMigration(db, "wildberries.categories"); err != nil {
+	if ok, err := checkAndSkipMigration(db, "wildberries.categories"); err != nil {
 		return err
+	} else if ok {
+		return nil
 	}
 	query := `
 	CREATE TABLE IF NOT EXISTS wildberries.categories (
@@ -64,23 +68,22 @@ func (m *CreateWBSchema) UpMigration(db *sql.DB) error {
 type WBNomenclatures struct{}
 
 func (m *WBNomenclatures) UpMigration(db *sql.DB) error {
-	if err := checkAndSkipMigration(db, "wildberries.nomenclatures"); err != nil {
+	if ok, err := checkAndSkipMigration(db, "wildberries.nomenclatures"); err != nil {
 		return err
+	} else if ok {
+		return nil
 	}
 
 	query := `
 		CREATE TABLE IF NOT EXISTS wildberries.nomenclatures (
 		    nomenclature_id SERIAL PRIMARY KEY,
 			global_id INT,
-			nm_id INT UNIQUE,т8ш
+			nm_id INT UNIQUE,	
 			imt_id INT UNIQUE,
             nm_uuid UUID UNIQUE,
             vendor_code VARCHAR(255),
 			subject_id INT,
 		    wb_brand VARCHAR(255),
-		    package_length DOUBLE,
-		    package_width DOUBLE,
-		    package_height DOUBLE,
 			created_at TIMESTAMP WITH TIME ZONE,
 			updated_at TIMESTAMP WITH TIME ZONE,
 			FOREIGN KEY(global_id) REFERENCES wholesaler.products(global_id)
@@ -96,15 +99,17 @@ func (m *WBNomenclatures) UpMigration(db *sql.DB) error {
 type WholesalerCharacteristics struct{}
 
 func (m *WholesalerCharacteristics) UpMigration(db *sql.DB) error {
-	if err := checkAndSkipMigration(db, "wildberries.characteristics"); err != nil {
+	if ok, err := checkAndSkipMigration(db, "wildberries.characteristics"); err != nil {
 		return err
+	} else if ok {
+		return nil
 	}
 
 	query := `
 		CREATE TABLE IF NOT EXISTS wildberries.characteristics (
 			id SERIAL PRIMARY KEY,
 			charc_id INT UNIQUE,
-			subjectName VARCHAR(255),
+		    name TEXT,
 			required BOOLEAN,
 			subject_id INT,
 		    unit_name VARCHAR(15),
@@ -122,17 +127,17 @@ func (m *WholesalerCharacteristics) UpMigration(db *sql.DB) error {
 	return nil
 }
 
-func checkAndSkipMigration(db *sql.DB, migrationName string) error {
+func checkAndSkipMigration(db *sql.DB, migrationName string) (bool, error) {
 	var migrationExists bool
 	err := db.QueryRow("SELECT EXISTS (SELECT 1 FROM migrations.migrations WHERE name = $1)", migrationName).Scan(&migrationExists)
 	if err != nil {
-		return fmt.Errorf("failed to check migration status: %w", err)
+		return migrationExists, fmt.Errorf("failed to check migration status: %w", err)
 	}
 	if migrationExists {
 		log.Printf("Migration '%s' already completed. Skipping.\n", migrationName)
-		return nil
+		return migrationExists, nil
 	}
-	return nil
+	return migrationExists, nil
 }
 
 func executeAndMarkMigration(db *sql.DB, query string, migrationName string) error {

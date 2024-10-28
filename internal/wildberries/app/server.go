@@ -35,6 +35,7 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 		&_postgres.CreateWBCategoriesTable{},
 		&_postgres.CreateWBProductsTable{},
 		&_postgres.WholesalerCharacteristics{},
+		&_postgres.WBNomenclatures{},
 	}
 
 	for _, _migration := range migrationApply {
@@ -60,7 +61,7 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 				"\nunitName : %s"+
 				"\nmaxCount : %d"+
 				"\npopular : %v"+
-				"\ncharcType : %d\n--------------------\n", v.CharcID, v.SubjectName, v.SubjectID, v.Name, v.Required, v.UnitName, v.MaxCount, v.Popular, v.CharcType)
+				"\ncharcType : %d\n--------------------\n", v.ID, v.SubjectName, v.SubjectID, v.Name, v.Required, v.UnitName, v.MaxCount, v.Popular, v.CharcType)
 	}
 
 	log.Printf("\n\n\n\nGetting cards")
@@ -76,8 +77,41 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	}
 	for _, v := range nomenclatures.Data {
 		log.Printf("\nSubID: %v", v.SubjectID)
-		log.Println()
+		global_id, err := v.GlobalID()
+		if err != nil {
+			log.Fatalf("Error getting global id: %s\n", err)
+		}
+		log.Println("GlobalID : ", global_id)
 	}
+
+	//categories := get.NewDBCategories(db)
+	//cats, err := categories.Categories()
+	//if err != nil {
+	//	log.Fatalf("Error getting categories: %s\n", err)
+	//}
+	//
+	//catIDs := make([]int, len(cats))
+	//for i, v := range cats {
+	//	catIDs[i] = v.SubjectID
+	//}
+
+	//update := get.NewUpdateDBCharcs(db)
+	//count, err := update.UpdateDBCharcs(catIDs)
+	//if err != nil {
+	//	log.Fatalf("Error updating charcs: %s\n", err)
+	//}
+	//log.Printf("\n\n\nUpdated %d charcs\n", count)
+
+	update_nomenclatures := get.NewUpdateDBNomenclature(db)
+	cnt, err := update_nomenclatures.UpdateNomenclature(request.Settings{
+		Sort:   request.Sort{Ascending: true},
+		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+		Cursor: request.Cursor{Limit: 100},
+	}, "")
+	if err != nil {
+		log.Fatalf("Error updating nomenclatures: %s\n", err)
+	}
+	log.Printf("\n\n\nUpdated %d nomenclatures\n", cnt)
 }
 
 func checkFunctionality() {

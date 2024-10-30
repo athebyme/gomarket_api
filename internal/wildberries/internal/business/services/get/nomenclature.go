@@ -2,14 +2,15 @@ package get
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"golang.org/x/time/rate"
+	"gomarketplace_api/internal/wholesaler/pkg/clients"
 	"gomarketplace_api/internal/wildberries/internal/business/dto/responses"
 	"gomarketplace_api/internal/wildberries/internal/business/models/dto/request"
+	"gomarketplace_api/internal/wildberries/internal/business/models/dto/response"
 	"gomarketplace_api/internal/wildberries/internal/business/services"
-	"gomarketplace_api/internal/wildberries/pkg/clients"
+	"gomarketplace_api/pkg/business/service"
 	"log"
 	"net/http"
 	"strings"
@@ -57,18 +58,18 @@ func GetNomenclature(settings request.Settings, locale string) (*responses.Nomen
 	return &nomenclatureResponse, nil
 }
 
-type UpdateDBNomenclature struct {
-	db *sql.DB
+type DbNomenclatureUpdater struct {
+	dbLoader service.DatabaseLoader
 }
 
-func NewUpdateDBNomenclature(db *sql.DB) *UpdateDBNomenclature {
-	return &UpdateDBNomenclature{db: db}
+func NewDbNomenclatureUpdater(dbLoader service.DatabaseLoader) *DbNomenclatureUpdater {
+	return &DbNomenclatureUpdater{dbLoader: dbLoader}
 }
 
 /*
 Возвращает число обновленных(добавленных) карточек
 */
-func (d *UpdateDBNomenclature) UpdateNomenclature(settings request.Settings, locale string) (int, error) {
+func (d *DbNomenclatureUpdater) UpdateNomenclature(settings request.Settings, locale string) (int, error) {
 	log.Printf("Updating wildberries.nomenclatures")
 	const batchSize = 5
 	updated := 0
@@ -131,6 +132,10 @@ func (d *UpdateDBNomenclature) UpdateNomenclature(settings request.Settings, loc
 				continue
 			}
 
+			if err := d.InitializeCard(nomenclature); err != nil {
+				return updated, fmt.Errorf("failed to initialize card in history: %w", err)
+			}
+
 			log.Printf("updated=%d", updated)
 			batch = append(batch, globalId, nomenclature.NmID, nomenclature.ImtID,
 				nomenclature.NmUUID, nomenclature.VendorCode, nomenclature.SubjectID,
@@ -164,7 +169,7 @@ func (d *UpdateDBNomenclature) UpdateNomenclature(settings request.Settings, loc
 	return updated, nil
 }
 
-func (d *UpdateDBNomenclature) insertBatchNomenclatures(batch []interface{}) error {
+func (d *DbNomenclatureUpdater) insertBatchNomenclatures(batch []interface{}) error {
 	query := `
 		INSERT INTO wildberries.nomenclatures (global_id, nm_id, imt_id, nm_uuid, vendor_code, subject_id, wb_brand, created_at, updated_at)
 		VALUES `
@@ -193,17 +198,17 @@ func (d *UpdateDBNomenclature) insertBatchNomenclatures(batch []interface{}) err
 	`
 
 	// Выполняем запрос с батчем параметров
-	_, err := d.db.Exec(query, batch...)
+	_, err := d.dbLoader.Exec(query, batch...)
 	return err
 }
 
-func (d *UpdateDBNomenclature) getAllNomenclatures() (map[int]struct{}, error) {
+func (d *DbNomenclatureUpdater) getAllNomenclatures() (map[int]struct{}, error) {
 	// запрос для получения списка category_id
 	query := `SELECT global_id FROM wildberries.nomenclatures`
 
 	// создаем срез для хранения category_id
 	nmIDs := make(map[int]struct{}, 1)
-	rows, err := d.db.Query(query)
+	rows, err := d.dbLoader.Query(query)
 	if err != nil {
 		return map[int]struct{}{}, fmt.Errorf("ошибка выполнения запроса для категорий: %w", err)
 	}
@@ -224,4 +229,27 @@ func (d *UpdateDBNomenclature) getAllNomenclatures() (map[int]struct{}, error) {
 	}
 
 	return nmIDs, nil
+}
+
+func (d *DbNomenclatureUpdater) InitializeCard(nomenclature response.Nomenclature) error {
+	cardData := map[string]interface{}{
+		"globalID":    nomenclature.GlobalID(),
+		"nmID":        nomenclature.NmID,
+		"vendorCode":  nomenclature.VendorCode,
+		"title":       nomenclature.Title,
+		"description": nomenclature.Description,
+		"brand":       nomenclature.Brand,
+		"createdAt":   nomenclature.CreatedAt,
+		"updatedAt":   nomenclature.UpdatedAt,
+		// добавьте другие необходимые поля
+	}
+
+	// Вызов метода интерфейса для вставки в cards_actual
+	err := d.DbLoader.InsertCardActual(cardData)
+	if err != nil {
+		return err
+	}
+
+	// Вызов метода интерфейса для вставки в cards_history с версией 1
+	return d.DbLoader.InsertCardHistory(cardData, 1)
 }

@@ -10,7 +10,8 @@ import (
 	"gomarketplace_api/internal/wildberries/internal/business/models/get"
 	"gomarketplace_api/internal/wildberries/internal/business/services"
 	get2 "gomarketplace_api/internal/wildberries/internal/business/services/get"
-	"gomarketplace_api/internal/wildberries/pkg/clients"
+	clients2 "gomarketplace_api/internal/wildberries/pkg/clients"
+	"gomarketplace_api/pkg/business/service"
 	"log"
 	"net/http"
 	"time"
@@ -23,12 +24,13 @@ func UpdateCards() (int, error) {
 }
 
 // map = vendorCode -> appellation
-func UpdateCardAppellation(settings request.Settings) (int, error) {
+func UpdateCardAppellation(settings request.Settings, cleaner service.ITextService) (int, error) {
 	var cardsToUpdate []get.WildberriesCard
-	clientWS := clients.NewAppellationsClient("http://localhost:8081")
+	clientWS := clients2.NewWServiceClient("http://localhost:8081")
 
 	// список всех global ids в wholesaler.products
 	appellationsMap, err := clientWS.FetchAppellations()
+	descriptionsMap, err := clientWS.FetchDescriptions()
 	if err != nil {
 		log.Fatalf("Error fetching Global IDs: %s", err)
 	}
@@ -68,7 +70,12 @@ func UpdateCardAppellation(settings request.Settings) (int, error) {
 			continue
 		}
 
-		wbCard.Title = appellationsMap[globalId]
+		wbCard.Title = cleaner.RemoveAllTags(appellationsMap[globalId])
+		if description, ok := descriptionsMap[globalId]; ok {
+			wbCard.Description = cleaner.RemoveAllTags(description)
+		} else {
+			wbCard.Description = cleaner.RemoveAllTags(appellationsMap[globalId])
+		}
 		cardsToUpdate = append(cardsToUpdate, wbCard)
 	}
 

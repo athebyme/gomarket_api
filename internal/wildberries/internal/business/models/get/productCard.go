@@ -3,23 +3,26 @@ package get
 import "gomarketplace_api/internal/wildberries/internal/business/models/dto/response"
 
 type WildberriesCard struct {
-	NmID            int              `json:"nmID"`
-	VendorCode      string           `json:"vendorCode"`
-	Brand           string           `json:"brand"`
-	Title           string           `json:"title"`
-	Description     string           `json:"description"`
-	Characteristics []response.Charc `json:"characteristics"`
-	Sizes           []response.Size  `json:"sizes"`
+	NmID            int                       `json:"nmID"`
+	VendorCode      string                    `json:"vendorCode"`
+	Brand           string                    `json:"brand"`
+	Title           string                    `json:"title"`
+	Description     string                    `json:"description"`
+	Dimensions      response.DimensionWrapper `json:"dimensions"`
+	Characteristics []response.Charc          `json:"characteristics"`
+	Sizes           []response.Size           `json:"sizes"`
 }
 
 func (c *WildberriesCard) FromNomenclature(n response.Nomenclature) *WildberriesCard {
-	v := WildberriesCard{}
-	v.NmID = n.NmID
-	v.VendorCode = n.VendorCode
-	v.Brand = n.Brand
-	v.Title = n.Title
-	v.Characteristics = n.Characteristics
-	v.Sizes = n.Sizes
+	card := WildberriesCard{}
 
-	return &v
+	card.NmID = n.NmID
+	card.VendorCode = n.VendorCode
+	card.Brand = n.Brand
+	card.Title = n.Title
+	card.Characteristics = n.Characteristics
+	card.Sizes = n.Sizes
+	card.Dimensions = *n.Dimensions.Unwrap()
+
+	return &card
 }

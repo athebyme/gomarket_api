@@ -115,3 +115,11 @@ func (s *ProductService) GetAllAppellations() (map[int]string, error) {
 	}
 	return res, nil
 }
+
+func (s *ProductService) GetAllDescriptions() (map[int]string, error) {
+	res, err := s.repo.GetDescriptions()
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}

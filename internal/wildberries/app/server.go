@@ -7,6 +7,7 @@ import (
 	"gomarketplace_api/internal/wildberries/internal/business/models/dto/request"
 	"gomarketplace_api/internal/wildberries/internal/business/services/get"
 	update2 "gomarketplace_api/internal/wildberries/internal/business/services/update"
+	"gomarketplace_api/pkg/business/service"
 	"gomarketplace_api/pkg/dbconnect/migration"
 	"gomarketplace_api/pkg/dbconnect/postgres"
 	"log"
@@ -35,7 +36,7 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 		&_postgres.CreateWBSchema{},
 		&_postgres.CreateWBCategoriesTable{},
 		&_postgres.CreateWBProductsTable{},
-		&_postgres.WholesalerCharacteristics{},
+		&_postgres.WBCharacteristics{},
 		&_postgres.WBNomenclatures{},
 	}
 
@@ -114,11 +115,14 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	//}
 	//log.Printf("\n\n\nUpdated %d nomenclatures\n", cnt)
 
+	var textService service.ITextService
+	textService = service.NewTextService()
+
 	updateAppellations, err := update2.UpdateCardAppellation(request.Settings{
 		Sort:   request.Sort{Ascending: false},
 		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
 		Cursor: request.Cursor{Limit: 2},
-	})
+	}, textService)
 
 	if err != nil {
 		log.Fatalf("Error updating nomenclatures: %s\n", err)

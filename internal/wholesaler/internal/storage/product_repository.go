@@ -162,6 +162,32 @@ func (r *ProductRepository) GetAppellations() (map[int]string, error) {
 	return appellations, nil
 }
 
+func (r *ProductRepository) GetDescriptions() (map[int]string, error) {
+	query := `SELECT global_id, product_description FROM wholesaler.descriptions`
+
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка выполнения запроса для получения globalIDs: %w", err)
+	}
+	defer rows.Close()
+
+	descriptions := make(map[int]string)
+	for rows.Next() {
+		var globalId int
+		var description string
+		if err := rows.Scan(&globalId, &description); err != nil {
+			return nil, fmt.Errorf("ошибка сканирования globalID: %w", err)
+		}
+		descriptions[globalId] = description
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ошибка при итерации по строкам: %w", err)
+	}
+
+	return descriptions, nil
+}
+
 func (r *ProductRepository) Close() error {
 	return r.db.Close()
 }

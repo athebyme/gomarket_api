@@ -13,7 +13,7 @@ type AppellationsClient struct {
 }
 
 func (c AppellationsClient) FetchAppellations() (map[int]string, error) {
-	log.Printf("Got signal for FetchAppellations()")
+	log.Printf("Got signal for FetchDescriptions()")
 	resp, err := http.Get(fmt.Sprintf("%s/api/appellations", c.ApiURL))
 	if err != nil {
 		return nil, err

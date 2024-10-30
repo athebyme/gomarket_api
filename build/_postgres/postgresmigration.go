@@ -96,9 +96,93 @@ func (m *WBNomenclatures) UpMigration(db *sql.DB) error {
 	return nil
 }
 
-type WholesalerCharacteristics struct{}
+type WBCardsActual struct{}
 
-func (m *WholesalerCharacteristics) UpMigration(db *sql.DB) error {
+func (m *WBCardsActual) UpMigration(db *sql.DB) error {
+	if ok, err := checkAndSkipMigration(db, "wildberries.cards_actual"); err != nil {
+		return err
+	} else if ok {
+		return nil
+	}
+	query := `CREATE TABLE IF NOT EXISTS wildberries.cards_actual(
+    			version_id SERIAL PRIMARY KEY,
+				global_id INT,
+				nm_id INT NOT NULL, -- ID номенклатуры
+				vendor_code VARCHAR(255),
+				version INT NOT NULL, -- Версия карточки
+				version_data JSONB, -- Полный JSON объект карточки
+				created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+				updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+				FOREIGN KEY(global_id) REFERENCES wildberries.nomenclatures(global_id)
+			)`
+
+	if err := executeAndMarkMigration(db, query, "wildberries.cards_actual"); err != nil {
+		return err
+	}
+	log.Println("Migration 'wildberries.cards_actual' completed successfully.")
+	return nil
+}
+
+type WBChanges struct{}
+
+func (m *WBChanges) UpMigration(db *sql.DB) error {
+	if ok, err := checkAndSkipMigration(db, "wildberries.changes"); err != nil {
+		return err
+	} else if ok {
+		return nil
+	}
+
+	query := `
+        CREATE TABLE IF NOT EXISTS wildberries.changes (
+            change_id SERIAL PRIMARY KEY,            -- Уникальный идентификатор изменения
+            nm_id INT NOT NULL,                      -- ID номенклатуры, к которой относится изменение
+            version INT NOT NULL,                    -- Версия карточки на момент изменения
+            changed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),  -- Время изменения
+            description TEXT                         -- Описание изменения (например, "Обновление данных", "Откат версии" и т.д.)
+        )
+    `
+
+	if err := executeAndMarkMigration(db, query, "wildberries.changes"); err != nil {
+		return err
+	}
+	log.Println("Migration 'wildberries.changes' completed successfully.")
+	return nil
+}
+
+type WBCardsHistory struct{}
+
+func (m *WBCardsHistory) UpMigration(db *sql.DB) error {
+	if ok, err := checkAndSkipMigration(db, "wildberries.cards_history"); err != nil {
+		return err
+	} else if ok {
+		return nil
+	}
+
+	query := `
+		CREATE TABLE IF NOT EXISTS wildberries.cards_history (
+		version_id SERIAL PRIMARY KEY,
+		global_id INT,
+		nm_id INT NOT NULL, -- ID номенклатуры
+		vendor_code VARCHAR(255),
+		version INT NOT NULL, -- Версия карточки
+		version_data JSONB, -- Полный JSON объект карточки
+		created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+		updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+		FOREIGN KEY(global_id) REFERENCES wildberries.nomenclatures(global_id)
+);
+
+		);
+	`
+	if err := executeAndMarkMigration(db, query, "wildberries.cards_history"); err != nil {
+		return err
+	}
+	log.Println("Migration 'wildberries.cards_history' completed successfully.")
+	return nil
+}
+
+type WBCharacteristics struct{}
+
+func (m *WBCharacteristics) UpMigration(db *sql.DB) error {
 	if ok, err := checkAndSkipMigration(db, "wildberries.characteristics"); err != nil {
 		return err
 	} else if ok {

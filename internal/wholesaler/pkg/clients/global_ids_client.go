@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 )
 
@@ -14,7 +15,9 @@ type GlobalIDsClient struct {
 func NewGlobalIDsClient(apiURL string) *GlobalIDsClient {
 	return &GlobalIDsClient{ApiURL: apiURL}
 }
+
 func (c *GlobalIDsClient) FetchGlobalIDs() ([]int, error) {
+	log.Printf("Got signal for FetchGlobalIDs()")
 	resp, err := http.Get(fmt.Sprintf("%s/api/globalids", c.ApiURL))
 	if err != nil {
 		return nil, err

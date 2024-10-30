@@ -130,9 +130,32 @@ func getAppellationHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func getDescriptionsHandler(w http.ResponseWriter, r *http.Request) {
+	repo, err := storage.NewProductRepository()
+	if err != nil {
+		log.Fatalf("Failed to create product repository: %v", err)
+		return
+	}
+	productService := business.NewProductService(repo)
+	descriptions, err := productService.GetAllDescriptions()
+	if err != nil {
+		http.Error(w, "Failed to fetch Global IDs", http.StatusInternalServerError)
+		return
+	}
+
+	// ?
+	defer repo.Close()
+
+	err = json.NewEncoder(w).Encode(descriptions)
+	if err != nil {
+		log.Printf("Failed to fetch Appellations: %v", err)
+	}
+}
+
 func SetupRoutes() {
 	http.HandleFunc("/api/globalids", getGlobalIDsHandler)
 	http.HandleFunc("/api/appellations", getAppellationHandler)
+	http.HandleFunc("/api/descriptions", getDescriptionsHandler)
 	log.Printf("Запущен сервис /api/globalids")
 	log.Fatal(http.ListenAndServe(":8081", nil))
 }

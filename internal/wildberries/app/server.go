@@ -3,7 +3,6 @@ package app
 import (
 	"gomarketplace_api/build/_postgres"
 	"gomarketplace_api/config"
-	"gomarketplace_api/internal/wildberries/internal/business/dto/responses"
 	"gomarketplace_api/internal/wildberries/internal/business/models/dto/request"
 	"gomarketplace_api/internal/wildberries/internal/business/services/get"
 	update2 "gomarketplace_api/internal/wildberries/internal/business/services/update"
@@ -14,6 +13,7 @@ import (
 )
 
 type WildberriesServer struct {
+	cardService *update2.CardUpdater
 }
 
 func NewWbServer() *WildberriesServer {
@@ -32,6 +32,13 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	}
 	defer db.Close()
 
+	nomenclatureUpdGet := get.NewNomenclatureUpdateGetter(db)
+	s.cardService = update2.NewCardUpdater(
+		nomenclatureUpdGet,
+		service.NewTextService(),
+		"http://localhost:8081",
+	)
+
 	migrationApply := []migration.MigrationInterface{
 		&_postgres.CreateWBSchema{},
 		&_postgres.CreateWBCategoriesTable{},
@@ -47,141 +54,19 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	}
 	log.Println("WB migrations applied successfully!")
 
-	cat_id := 5070
-	var charcs *responses.CharacteristicsResponse
-	charcs, err = get.GetItemCharcs(cat_id, "")
-	if err != nil {
-		log.Fatalf("Error getting characters: %s\n", err)
-	}
-	for _, v := range charcs.Data {
-		log.Printf(
-			"\ncharcID : %d,"+
-				"\nsubjectName : %s"+
-				"\nsubjectID : %d"+
-				"\nname : %s"+
-				"\nrequired : %v"+
-				"\nunitName : %s"+
-				"\nmaxCount : %d"+
-				"\npopular : %v"+
-				"\ncharcType : %d\n--------------------\n", v.ID, v.SubjectName, v.SubjectID, v.Name, v.Required, v.UnitName, v.MaxCount, v.Popular, v.CharcType)
-	}
-
-	log.Printf("\n\n\n\nGetting cards")
-
-	var nomenclatures *responses.NomenclatureResponse
-	nomenclatures, err = get.GetNomenclature(request.Settings{
-		Sort:   request.Sort{Ascending: true},
-		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-		Cursor: request.Cursor{Limit: 1},
-	}, "")
-	if err != nil {
-		log.Fatalf("Error getting nomenclatures: %s\n", err)
-	}
-	for _, v := range nomenclatures.Data {
-		log.Printf("\nSubID: %v", v.SubjectID)
-		global_id, err := v.GlobalID()
-		if err != nil {
-			log.Fatalf("Error getting global id: %s\n", err)
-		}
-		log.Println("GlobalID : ", global_id)
-	}
-
-	//categories := get.NewDBCategories(db)
-	//cats, err := categories.Categories()
+	//_, err = s.cardService.NomenclatureService.GetNomenclatureWithCardCount(101, "")
 	//if err != nil {
-	//	log.Fatalf("Error getting categories: %s\n", err)
+	//	log.Fatalf("Error getting Nomenclature count: %v", err)
 	//}
-	//
-	//catIDs := make([]int, len(cats))
-	//for i, v := range cats {
-	//	catIDs[i] = v.SubjectID
-	//}
-	//
-	//update := get.NewUpdateDBCharcs(db)
-	//count, err := update.UpdateDBCharcs(catIDs)
-	//if err != nil {
-	//	log.Fatalf("Error updating charcs: %s\n", err)
-	//}
-	//log.Printf("\n\n\nUpdated %d charcs\n", count)
 
-	//update_nomenclatures := get.NewUpdateDBNomenclature(db)
-	//cnt, err := update_nomenclatures.UpdateNomenclature(request.Settings{
-	//	Sort:   request.Sort{Ascending: false},
-	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-	//	Cursor: request.Cursor{Limit: 100},
-	//}, "")
-	//if err != nil {
-	//	log.Fatalf("Error updating nomenclatures: %s\n", err)
-	//}
-	//log.Printf("\n\n\nUpdated %d nomenclatures\n", cnt)
-
-	var textService service.ITextService
-	textService = service.NewTextService()
-
-	updateAppellations, err := update2.UpdateCardAppellation(request.Settings{
+	updateAppellations, err := s.cardService.UpdateCardNaming(request.Settings{
 		Sort:   request.Sort{Ascending: false},
 		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-		Cursor: request.Cursor{Limit: 2},
-	}, textService)
+		Cursor: request.Cursor{Limit: 10},
+	})
 
 	if err != nil {
 		log.Fatalf("Error updating nomenclatures: %s\n", err)
 	}
 	log.Printf("\n\n\nUpdated %d nomenclatures\n", updateAppellations)
-}
-
-func checkFunctionality() {
-	var err error
-	var ping *responses.Ping
-	ping, err = get.Ping()
-	if err != nil {
-		log.Fatalf("Error pingig WB server : %s\n", err)
-	}
-	log.Printf("WB server status is (%s), (TS: %s)", ping.Status, ping.TS)
-
-	// ----
-	cat_id := 5067
-	var charcs *responses.CharacteristicsResponse
-	charcs, err = get.GetItemCharcs(cat_id, "")
-	if err != nil {
-		log.Fatalf("Error getting characters : %s\n", err)
-	}
-
-	filtered := charcs.FilterPopularity()
-	log.Printf("\nCharacters : %v", filtered.Data)
-
-	var colors *responses.ColorResponse
-	colors, err = get.GetColors("")
-	if err != nil {
-		log.Fatalf("Error getting colors: %s\n", err)
-	}
-	for _, v := range colors.Data {
-		log.Printf("\nColor : %s", v.Name)
-	}
-
-	var sex *responses.SexResponse
-	sex, err = get.GetSex("")
-	if err != nil {
-		log.Fatalf("Error getting sexes: %s\n", err)
-	}
-	for _, v := range sex.Data {
-		log.Printf("\nSex : %s", v)
-	}
-
-	var countries *responses.CountryResponse
-	countries, err = get.GetCountries("")
-	if err != nil {
-		log.Fatalf("Error getting countries: %s\n", err)
-	}
-	for _, v := range countries.Data {
-		log.Printf("\nSex : %s", v)
-	}
-
-	var prodCardsLim *responses.ProductCardsLimitResponse
-	prodCardsLim, err = get.GetProductCardsLimit()
-	if err != nil {
-		log.Fatalf("Error getting product cards limit: %s\n", err)
-	}
-	log.Printf("\nProduct cards limit : %v", prodCardsLim.Data)
-
 }

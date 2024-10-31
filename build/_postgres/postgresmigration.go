@@ -123,6 +123,33 @@ func (m *WBCardsActual) UpMigration(db *sql.DB) error {
 	return nil
 }
 
+type WBNomenclaturesHistory struct{}
+
+func (m *WBNomenclaturesHistory) UpMigration(db *sql.DB) error {
+	if ok, err := checkAndSkipMigration(db, "wildberries.nomenclatures_history"); err != nil {
+		return err
+	} else if ok {
+		return nil
+	}
+	query := `CREATE TABLE IF NOT EXISTS wildberries.nomenclatures_history(
+    			version_id SERIAL PRIMARY KEY,
+				global_id INT,
+				nm_id INT NOT NULL, -- ID номенклатуры
+				vendor_code VARCHAR(255),
+				version INT NOT NULL, -- Версия карточки
+				version_data JSONB, -- Полный JSON объект карточки
+				created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+				updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+				FOREIGN KEY(global_id) REFERENCES wildberries.nomenclatures(global_id)
+			)`
+
+	if err := executeAndMarkMigration(db, query, "wildberries.nomenclatures_history"); err != nil {
+		return err
+	}
+	log.Println("Migration 'wildberries.nomenclatures_history' completed successfully.")
+	return nil
+}
+
 type WBChanges struct{}
 
 func (m *WBChanges) UpMigration(db *sql.DB) error {

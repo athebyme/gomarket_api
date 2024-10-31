@@ -17,20 +17,32 @@ import (
 	"time"
 )
 
+type CardUpdater struct {
+	NomenclatureService get2.NomenclatureUpdateGetter
+	wsclient            *clients2.WServiceClient
+	textService         service.ITextService
+}
+
+func NewCardUpdater(nservice *get2.NomenclatureUpdateGetter, textService service.ITextService, wsClientUrl string) *CardUpdater {
+	return &CardUpdater{
+		NomenclatureService: *nservice,
+		wsclient:            clients2.NewWServiceClient(wsClientUrl),
+		textService:         textService,
+	}
+}
+
 const updateCardsUrl = "https://content-api.wildberries.ru/content/v2/cards/update"
 
 func UpdateCards() (int, error) {
 	panic("TO DO")
 }
 
-// map = vendorCode -> appellation
-func UpdateCardAppellation(settings request.Settings, cleaner service.ITextService) (int, error) {
+func (u *CardUpdater) UpdateCardNaming(settings request.Settings) (int, error) {
 	var cardsToUpdate []get.WildberriesCard
-	clientWS := clients2.NewWServiceClient("http://localhost:8081")
 
 	// список всех global ids в wholesaler.products
-	appellationsMap, err := clientWS.FetchAppellations()
-	descriptionsMap, err := clientWS.FetchDescriptions()
+	appellationsMap, err := u.wsclient.FetchAppellations()
+	descriptionsMap, err := u.wsclient.FetchDescriptions()
 	if err != nil {
 		log.Fatalf("Error fetching Global IDs: %s", err)
 	}
@@ -50,7 +62,7 @@ func UpdateCardAppellation(settings request.Settings, cleaner service.ITextServi
 	if err := limiter.Wait(context.Background()); err != nil {
 		return updated, err
 	}
-	nomenclatureResponse, err := get2.GetNomenclature(settings, "")
+	nomenclatureResponse, err := u.NomenclatureService.GetNomenclature(settings, "")
 	if err != nil {
 		return updated, fmt.Errorf("failed to get nomenclatures: %w", err)
 	}
@@ -70,11 +82,11 @@ func UpdateCardAppellation(settings request.Settings, cleaner service.ITextServi
 			continue
 		}
 
-		wbCard.Title = cleaner.RemoveAllTags(appellationsMap[globalId])
+		wbCard.Title = u.textService.ClearAndReduce(appellationsMap[globalId], 60)
 		if description, ok := descriptionsMap[globalId]; ok {
-			wbCard.Description = cleaner.RemoveAllTags(description)
+			wbCard.Description = u.textService.ClearAndReduce(description, 2000)
 		} else {
-			wbCard.Description = cleaner.RemoveAllTags(appellationsMap[globalId])
+			wbCard.Description = u.textService.ClearAndReduce(appellationsMap[globalId], 2000)
 		}
 		cardsToUpdate = append(cardsToUpdate, wbCard)
 	}
@@ -103,6 +115,8 @@ func UpdateCardAppellation(settings request.Settings, cleaner service.ITextServi
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("update failed with status: %d", resp.StatusCode)
 	}
+
+	// update card history
 
 	return len(cardsToUpdate), nil
 }

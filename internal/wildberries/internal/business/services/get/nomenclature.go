@@ -2,6 +2,7 @@ package get
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"golang.org/x/time/rate"
@@ -9,17 +10,26 @@ import (
 	"gomarketplace_api/internal/wildberries/internal/business/dto/responses"
 	"gomarketplace_api/internal/wildberries/internal/business/models/dto/request"
 	"gomarketplace_api/internal/wildberries/internal/business/models/dto/response"
+	"gomarketplace_api/internal/wildberries/internal/business/models/get"
 	"gomarketplace_api/internal/wildberries/internal/business/services"
-	"gomarketplace_api/pkg/business/service"
 	"log"
 	"net/http"
 	"strings"
 	"time"
 )
 
+type NomenclatureUpdateGetter struct {
+	db            *sql.DB
+	updateService get.UpdateService
+}
+
+func NewNomenclatureUpdateGetter(db *sql.DB) *NomenclatureUpdateGetter {
+	return &NomenclatureUpdateGetter{db: db}
+}
+
 const postNomenclature = "https://content-api.wildberries.ru/content/v2/get/cards/list"
 
-func GetNomenclature(settings request.Settings, locale string) (*responses.NomenclatureResponse, error) {
+func (d *NomenclatureUpdateGetter) GetNomenclature(settings request.Settings, locale string) (*responses.NomenclatureResponse, error) {
 	url := postNomenclature
 	if locale != "" {
 		url = fmt.Sprintf("%s?locale=%s", url, locale)
@@ -58,18 +68,66 @@ func GetNomenclature(settings request.Settings, locale string) (*responses.Nomen
 	return &nomenclatureResponse, nil
 }
 
-type DbNomenclatureUpdater struct {
-	dbLoader service.DatabaseLoader
+func (d *NomenclatureUpdateGetter) GetNomenclatureWithCardCount(cardCount int, locale string) (*responses.NomenclatureResponse, error) {
+	if cardCount <= 0 {
+		return nil, fmt.Errorf("cardCount must be greater than 0: %d", cardCount)
+	}
+	if cardCount > 100 {
+		return nil, fmt.Errorf("cardCount must be less than 100 in one request: %d", cardCount)
+	}
+
+	url := postNomenclature
+	if locale != "" {
+		url = fmt.Sprintf("%s?locale=%s", url, locale)
+	}
+
+	client := &http.Client{Timeout: 20 * time.Second}
+
+	settings := request.Settings{
+		Sort:   request.Sort{Ascending: false},
+		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+		Cursor: request.Cursor{Limit: cardCount},
+	}
+
+	requestBody, err := settings.CreateRequestBody()
+	if err != nil {
+		return nil, fmt.Errorf("creating request body: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", url, requestBody)
+	if err != nil {
+		return nil, err
+	}
+
+	services.SetAuthorizationHeader(req)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %s", resp.Status)
+	}
+
+	var nomenclatureResponse responses.NomenclatureResponse
+	if err := json.NewDecoder(resp.Body).Decode(&nomenclatureResponse); err != nil {
+		return nil, err
+	}
+
+	return &nomenclatureResponse, nil
 }
 
-func NewDbNomenclatureUpdater(dbLoader service.DatabaseLoader) *DbNomenclatureUpdater {
-	return &DbNomenclatureUpdater{dbLoader: dbLoader}
+func NewDbNomenclatureUpdater(updateService get.UpdateService, db *sql.DB) *NomenclatureUpdateGetter {
+	return &NomenclatureUpdateGetter{updateService: updateService, db: db}
 }
 
 /*
 Возвращает число обновленных(добавленных) карточек
 */
-func (d *DbNomenclatureUpdater) UpdateNomenclature(settings request.Settings, locale string) (int, error) {
+func (d *NomenclatureUpdateGetter) UpdateNomenclature(settings request.Settings, locale string) (int, error) {
 	log.Printf("Updating wildberries.nomenclatures")
 	const batchSize = 5
 	updated := 0
@@ -110,7 +168,7 @@ func (d *DbNomenclatureUpdater) UpdateNomenclature(settings request.Settings, lo
 		}
 
 		// Получаем данные номенклатур из API
-		nomenclatureResponse, err := GetNomenclature(settings, locale)
+		nomenclatureResponse, err := d.GetNomenclature(settings, locale)
 		if err != nil {
 			return updated, fmt.Errorf("failed to get nomenclatures: %w", err)
 		}
@@ -132,7 +190,7 @@ func (d *DbNomenclatureUpdater) UpdateNomenclature(settings request.Settings, lo
 				continue
 			}
 
-			if err := d.InitializeCard(nomenclature); err != nil {
+			if err := d.initializeCard(nomenclature); err != nil {
 				return updated, fmt.Errorf("failed to initialize card in history: %w", err)
 			}
 
@@ -169,7 +227,7 @@ func (d *DbNomenclatureUpdater) UpdateNomenclature(settings request.Settings, lo
 	return updated, nil
 }
 
-func (d *DbNomenclatureUpdater) insertBatchNomenclatures(batch []interface{}) error {
+func (d *NomenclatureUpdateGetter) insertBatchNomenclatures(batch []interface{}) error {
 	query := `
 		INSERT INTO wildberries.nomenclatures (global_id, nm_id, imt_id, nm_uuid, vendor_code, subject_id, wb_brand, created_at, updated_at)
 		VALUES `
@@ -198,17 +256,17 @@ func (d *DbNomenclatureUpdater) insertBatchNomenclatures(batch []interface{}) er
 	`
 
 	// Выполняем запрос с батчем параметров
-	_, err := d.dbLoader.Exec(query, batch...)
+	_, err := d.db.Exec(query, batch...)
 	return err
 }
 
-func (d *DbNomenclatureUpdater) getAllNomenclatures() (map[int]struct{}, error) {
+func (d *NomenclatureUpdateGetter) getAllNomenclatures() (map[int]struct{}, error) {
 	// запрос для получения списка category_id
 	query := `SELECT global_id FROM wildberries.nomenclatures`
 
 	// создаем срез для хранения category_id
 	nmIDs := make(map[int]struct{}, 1)
-	rows, err := d.dbLoader.Query(query)
+	rows, err := d.db.Query(query)
 	if err != nil {
 		return map[int]struct{}{}, fmt.Errorf("ошибка выполнения запроса для категорий: %w", err)
 	}
@@ -231,25 +289,22 @@ func (d *DbNomenclatureUpdater) getAllNomenclatures() (map[int]struct{}, error) 
 	return nmIDs, nil
 }
 
-func (d *DbNomenclatureUpdater) InitializeCard(nomenclature response.Nomenclature) error {
-	cardData := map[string]interface{}{
-		"globalID":    nomenclature.GlobalID(),
-		"nmID":        nomenclature.NmID,
-		"vendorCode":  nomenclature.VendorCode,
-		"title":       nomenclature.Title,
-		"description": nomenclature.Description,
-		"brand":       nomenclature.Brand,
-		"createdAt":   nomenclature.CreatedAt,
-		"updatedAt":   nomenclature.UpdatedAt,
-		// добавьте другие необходимые поля
+func (d *NomenclatureUpdateGetter) initializeCard(nomenclature response.Nomenclature) error {
+	dataJson, err := json.Marshal(nomenclature)
+	if err != nil {
+		return err
 	}
-
-	// Вызов метода интерфейса для вставки в cards_actual
-	err := d.DbLoader.InsertCardActual(cardData)
+	globalID, err := nomenclature.GlobalID()
 	if err != nil {
 		return err
 	}
 
-	// Вызов метода интерфейса для вставки в cards_history с версией 1
-	return d.DbLoader.InsertCardHistory(cardData, 1)
+	cardData := map[string]interface{}{
+		"globalID":     globalID,
+		"nmID":         nomenclature.NmID,
+		"vendorCode":   nomenclature.VendorCode,
+		"version_data": dataJson,
+	}
+
+	return d.updateService.InitializeCard(cardData)
 }

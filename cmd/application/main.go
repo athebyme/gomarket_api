@@ -4,6 +4,7 @@ import (
 	wsapp "gomarketplace_api/internal/wholesaler/app"
 	wbapp "gomarketplace_api/internal/wildberries/app"
 	"log"
+	"os"
 	"sync"
 )
 
@@ -29,4 +30,5 @@ func main() {
 		wg.Done()
 	}()
 	wg.Wait()
+	os.Exit(0)
 }

@@ -62,7 +62,7 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	updateAppellations, err := s.cardService.UpdateCardNaming(request.Settings{
 		Sort:   request.Sort{Ascending: false},
 		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-		Cursor: request.Cursor{Limit: 10},
+		Cursor: request.Cursor{Limit: 100},
 	})
 
 	if err != nil {

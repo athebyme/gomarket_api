@@ -73,17 +73,20 @@ func (u *CardUpdater) UpdateCardNaming(settings request.Settings) (int, error) {
 
 		globalId, err := v.GlobalID()
 		if err != nil {
+			log.Printf("(globalID=%d) parse error (not SPB aricular)", v.VendorCode)
 			continue
 		}
 		if globalId == 0 {
+			log.Printf("(globalID=%d) parse error (not SPB aricular)", v.VendorCode)
 			continue
 		}
 		if _, ok := appellationsMap[globalId]; !ok {
+			log.Printf("(globalID=%d) not found appellation", v.VendorCode)
 			continue
 		}
 
 		wbCard.Title = u.textService.ClearAndReduce(appellationsMap[globalId], 60)
-		if description, ok := descriptionsMap[globalId]; ok {
+		if description, ok := descriptionsMap[globalId]; ok && description != "" {
 			wbCard.Description = u.textService.ClearAndReduce(description, 2000)
 		} else {
 			wbCard.Description = u.textService.ClearAndReduce(appellationsMap[globalId], 2000)

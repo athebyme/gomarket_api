@@ -1,6 +1,8 @@
 package service
 
 import (
+	"html"
+	"regexp"
 	"strings"
 )
 
@@ -10,6 +12,9 @@ type ITextService interface {
 	RemoveAllTags(input string) string
 	ReduceToLength(input string, length int) string
 	ClearAndReduce(input string, length int) string
+	RemoveLinks(input string) string
+	SmartReduceToLength(input string, length int) string
+	RemoveUnimportantSymbols(input string) string
 }
 
 type TextService struct{}
@@ -19,35 +24,14 @@ func NewTextService() *TextService {
 }
 
 func (ts *TextService) RemoveTags(input string) string {
-	//// Регулярные выражения для удаления PHP, JS, HTML тегов и спецсимволов
-	//phpTagPattern := regexp.MustCompile(`<\?php[\s\S]*?\?>`)
-	//jsTagPattern := regexp.MustCompile(`<script[^>]*>[\s\S]*?</script>`)
-	//htmlTagPattern := regexp.MustCompile(`<.*?>`)
-	//alphaNumericPattern := regexp.MustCompile(`[^a-zA-Z0-9\s]+`)
-	//
-	//// Создаем StringBuilder для накопления результата
-	//var builder strings.Builder
-	//
-	//// Удаляем PHP теги и содержимое
-	//input = phpTagPattern.ReplaceAllString(input, "")
-	//// Удаляем JavaScript теги и содержимое
-	//input = jsTagPattern.ReplaceAllString(input, "")
-	//// Удаляем HTML теги
-	//input = htmlTagPattern.ReplaceAllString(input, "")
-	//// Удаляем спецсимволы
-	//input = alphaNumericPattern.ReplaceAllString(input, "")
-	//
-	//// Добавляем очищенный результат в builder
-	//builder.WriteString(input)
-	//
-	//return builder.String()
-	return strings.ReplaceAll(input, "<[^>]*>", "")
+	re := regexp.MustCompile(`<[^>]*>`)
+	return re.ReplaceAllString(html.UnescapeString(input), "")
 }
 
 func (ts *TextService) RemoveSpecialChars(input string) string {
 	var builder strings.Builder
 	for _, r := range input {
-		if !strings.ContainsRune("@#$%^&*_[]{}|;'\"<>/", r) {
+		if !strings.ContainsRune("•@#$%^&*_[]{}|;'\"<>/", r) {
 			builder.WriteString(string(r))
 		}
 	}
@@ -55,42 +39,53 @@ func (ts *TextService) RemoveSpecialChars(input string) string {
 }
 
 func (ts *TextService) RemoveAllTags(input string) string {
-	//phpTagPattern := regexp.MustCompile(`<\?php[\s\S]*?\?>`)
-	//jsTagPattern := regexp.MustCompile(`<script[^>]*>[\s\S]*?</script>`)
-	//htmlTagPattern := regexp.MustCompile(`<.*?>`)
-	//
-	//input = phpTagPattern.ReplaceAllString(input, "")
-	//input = jsTagPattern.ReplaceAllString(input, "")
-	//input = htmlTagPattern.ReplaceAllString(input, "")
-	//
-	//var builder strings.Builder
-	//
-	//for _, r := range []rune(input) {
-	//	if unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsSpace(r) {
-	//		builder.WriteRune(r)
-	//	}
-	//}
-	//
-	//return builder.String()
-
 	return ts.RemoveSpecialChars(ts.RemoveTags(input))
 }
 
 func (ts *TextService) ReduceToLength(input string, length int) string {
 	var builder strings.Builder
 	words := strings.Split(input, " ")
+	totalLength := 0
+
 	for i, word := range words {
-		if i < length-1 {
-			builder.WriteString(word + " ")
-		} else if i == length-1 && strings.HasSuffix(word, ",") {
-			builder.WriteString(word)
-		} else {
+		if totalLength+len(word) > length {
 			break
 		}
+
+		if i > 0 {
+			builder.WriteString(" ")
+			totalLength++
+		}
+
+		builder.WriteString(word)
+		totalLength += len(word)
 	}
+
 	return builder.String()
 }
 
 func (ts *TextService) ClearAndReduce(input string, length int) string {
-	return ts.ReduceToLength(ts.RemoveAllTags(input), length)
+	// Шаг 1: Удаляем все теги
+	cleaned := ts.RemoveAllTags(input)
+	// Шаг 2: Удаляем ссылки
+	cleaned = ts.RemoveLinks(cleaned)
+	// Шаг 3: Умное сокращение до нужной длины
+	return ts.SmartReduceToLength(cleaned, length)
+}
+func (ts *TextService) RemoveLinks(input string) string {
+	re := regexp.MustCompile(`https?://[^\s]+`)
+	return re.ReplaceAllString(input, "")
+}
+
+func (ts *TextService) SmartReduceToLength(input string, length int) string {
+	cleaned := input
+	if len(cleaned) > length {
+		cleaned = ts.RemoveUnimportantSymbols(input)
+	}
+	return ts.ReduceToLength(cleaned, length)
+}
+
+func (ts *TextService) RemoveUnimportantSymbols(input string) string {
+	re := regexp.MustCompile(`[(),."'|/\-+&]`)
+	return re.ReplaceAllString(input, "")
 }

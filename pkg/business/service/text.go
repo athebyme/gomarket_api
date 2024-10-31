@@ -1,9 +1,11 @@
 package service
 
 import (
+	"bytes"
 	"html"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 type ITextService interface {
@@ -15,6 +17,9 @@ type ITextService interface {
 	RemoveLinks(input string) string
 	SmartReduceToLength(input string, length int) string
 	RemoveUnimportantSymbols(input string) string
+	RemoveWord(input string, word string) string
+	AddWordIfNotExistsToFront(input string, word string) string
+	ValidateUTF8Word(word string) string
 }
 
 type TextService struct{}
@@ -63,7 +68,6 @@ func (ts *TextService) ReduceToLength(input string, length int) string {
 
 	return builder.String()
 }
-
 func (ts *TextService) ClearAndReduce(input string, length int) string {
 	// Шаг 1: Удаляем все теги
 	cleaned := ts.RemoveAllTags(input)
@@ -86,6 +90,65 @@ func (ts *TextService) SmartReduceToLength(input string, length int) string {
 }
 
 func (ts *TextService) RemoveUnimportantSymbols(input string) string {
-	re := regexp.MustCompile(`[(),."'|/\-+&]`)
+	re := regexp.MustCompile(`[%№(),."'|/\-+&]`)
 	return re.ReplaceAllString(input, "")
+}
+
+func (ts *TextService) RemoveWord(input string, word string) string {
+	return regexp.MustCompile(word).ReplaceAllString(input, "")
+}
+
+func (ts *TextService) AddWordIfNotExistsToFront(input string, word string) string {
+	return ts.AddWordIfNotExists(input, word, 0)
+}
+
+func (ts *TextService) AddWordIfNotExists(input string, word string, index int) string {
+	word = ts.ValidateUTF8Word(word)
+
+	safeWord := regexp.QuoteMeta(ts.TrimLastRunes(word, 3))
+
+	match := regexp.MustCompile(safeWord).Find([]byte(input))
+	if match == nil {
+		if index > len(input) {
+			index = len(input)
+		}
+		return input[:index] + word + " " + input[index:]
+	}
+	return input
+}
+
+func (ts *TextService) AddCategoryIfNotExistInAppellation(appellation string, category string) string {
+	// Проверка UTF-8 корректности для appellation и category
+	appellation = ts.ValidateUTF8Word(appellation)
+	category = ts.ValidateUTF8Word(category)
+
+	// Разделяем category на отдельные слова
+	words := strings.Fields(category)
+
+	// Создаем строку для слов, которых нет в appellation
+	newWords := ""
+
+	for _, word := range words {
+		// Если слово отсутствует в appellation, добавляем его в newWords
+		if ts.AddWordIfNotExists(appellation, word, 0) == appellation {
+			newWords += word + " "
+		}
+	}
+
+	// Объединяем newWords и appellation
+	return strings.TrimSpace(newWords) + " " + appellation
+}
+
+func (ts *TextService) ValidateUTF8Word(word string) string {
+	if !utf8.ValidString(word) {
+		return string(bytes.ReplaceAll([]byte(word), []byte{0xEF, 0xBF, 0xBD}, []byte("?")))
+	}
+	return word
+}
+func (ts *TextService) TrimLastRunes(word string, n int) string {
+	runes := []rune(word)
+	if len(runes) >= n {
+		return string(runes[:len(runes)-n])
+	}
+	return word
 }

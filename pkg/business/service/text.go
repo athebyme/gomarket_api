@@ -17,15 +17,48 @@ type ITextService interface {
 	RemoveLinks(input string) string
 	SmartReduceToLength(input string, length int) string
 	RemoveUnimportantSymbols(input string) string
+	ReplaceEngLettersToRus(input string) string
 	RemoveWord(input string, word string) string
+	ReplaceSymbols(input string, replace map[string]string) string
 	AddWordIfNotExistsToFront(input string, word string) string
 	ValidateUTF8Word(word string) string
 }
 
-type TextService struct{}
+var engRusMap = map[string]string{
+	"a": "а",
+	"e": "е",
+	"c": "с",
+	"x": "х",
+	"p": "р",
+	"o": "о",
+	"A": "А",
+	"E": "Е",
+	"P": "Р",
+	"C": "С",
+	"X": "Х",
+	"O": "О",
+	"H": "Н",
+}
+
+type TextService struct {
+}
 
 func NewTextService() *TextService {
 	return &TextService{}
+}
+
+func (ts *TextService) ReplaceEngLettersToRus(input string) string {
+	for k, v := range engRusMap {
+		input = strings.Replace(input, k, v, -1)
+	}
+	return input
+}
+
+func (ts *TextService) ReplaceSymbols(input string, replace map[string]string) string {
+	for k, v := range replace {
+		input = strings.Replace(input, k, v, -1)
+	}
+	return input
 }
 
 func (ts *TextService) RemoveTags(input string) string {

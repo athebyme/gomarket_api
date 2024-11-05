@@ -1,6 +1,8 @@
 package request
 
 type Pagination interface {
+	GetPaginatorCursor() PaginatorCursor
+	TotalCards() int
 }
 
 type Paginator struct {
@@ -16,4 +18,16 @@ type PaginatorCursor struct {
 
 func (p *Paginator) GetPaginatorCursor() PaginatorCursor {
 	return PaginatorCursor{UpdatedAt: p.UpdatedAt, NmID: p.NmID}
+}
+
+func (p *Paginator) TotalCards() int {
+	return p.Total
+}
+
+func (pc *PaginatorCursor) TotalCards() int {
+	return -1
+}
+
+func (pc *PaginatorCursor) GetPaginatorCursor() PaginatorCursor {
+	return *pc
 }

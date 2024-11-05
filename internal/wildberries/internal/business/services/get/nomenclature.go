@@ -68,7 +68,7 @@ func (d *NomenclatureUpdateGetter) GetNomenclature(settings request.Settings, lo
 	return &nomenclatureResponse, nil
 }
 
-func (d *NomenclatureUpdateGetter) GetNomenclatureWithCardCount(cardCount int, locale string) (*responses.NomenclatureResponse, error) {
+func (d *NomenclatureUpdateGetter) GetNomenclatureWithLimit(cardCount int, locale string) (*responses.NomenclatureResponse, error) {
 	if cardCount <= 0 {
 		return nil, fmt.Errorf("cardCount must be greater than 0: %d", cardCount)
 	}
@@ -162,7 +162,7 @@ func (d *NomenclatureUpdateGetter) UpdateNomenclature(settings request.Settings,
 		globalIDsMap[globalID] = struct{}{}
 	}
 
-	for {
+	for settings.Cursor.Pagination.TotalCards() >= settings.Cursor.Limit {
 		if err := limiter.Wait(context.Background()); err != nil {
 			return updated, err
 		}

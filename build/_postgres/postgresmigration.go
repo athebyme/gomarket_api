@@ -81,7 +81,7 @@ func (m *WBNomenclatures) UpMigration(db *sql.DB) error {
 			nm_id INT UNIQUE,	
 			imt_id INT UNIQUE,
             nm_uuid UUID UNIQUE,
-            vendor_code VARCHAR(255),
+            vendor_code VARCHAR(255) UNIQUE,
 			subject_id INT,
 		    wb_brand VARCHAR(255),
 			created_at TIMESTAMP WITH TIME ZONE,
@@ -113,7 +113,9 @@ func (m *WBCardsActual) UpMigration(db *sql.DB) error {
 				version_data JSONB, -- Полный JSON объект карточки
 				created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
 				updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-				FOREIGN KEY(global_id) REFERENCES wildberries.nomenclatures(global_id)
+				FOREIGN KEY(global_id) REFERENCES wildberries.nomenclatures(global_id),
+    			FOREIGN KEY (nm_id) REFERENCES wildberries.nomenclatures(nm_id),
+    			FOREIGN KEY (vendor_code) REFERENCES wildberries.nomenclatures(vendor_code)
 			)`
 
 	if err := executeAndMarkMigration(db, query, "wildberries.cards_actual"); err != nil {
@@ -140,7 +142,9 @@ func (m *WBNomenclaturesHistory) UpMigration(db *sql.DB) error {
 				version_data JSONB, -- Полный JSON объект карточки
 				created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
 				updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-				FOREIGN KEY(global_id) REFERENCES wildberries.nomenclatures(global_id)
+				FOREIGN KEY(global_id) REFERENCES wildberries.nomenclatures(global_id),
+				FOREIGN KEY (nm_id) REFERENCES wildberries.nomenclatures(nm_id),
+    			FOREIGN KEY (vendor_Code) REFERENCES wildberries.nomenclatures(vendor_code)
 			)`
 
 	if err := executeAndMarkMigration(db, query, "wildberries.nomenclatures_history"); err != nil {
@@ -163,9 +167,12 @@ func (m *WBChanges) UpMigration(db *sql.DB) error {
         CREATE TABLE IF NOT EXISTS wildberries.changes (
             change_id SERIAL PRIMARY KEY,            -- Уникальный идентификатор изменения
             nm_id INT NOT NULL,                      -- ID номенклатуры, к которой относится изменение
+            vendor_code VARCHAR(255) NOT NULL,
             version INT NOT NULL,                    -- Версия карточки на момент изменения
             changed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),  -- Время изменения
-            description TEXT                         -- Описание изменения (например, "Обновление данных", "Откат версии" и т.д.)
+            description TEXT,                         -- Описание изменения (например, "Обновление данных", "Откат версии" и т.д.)
+			FOREIGN KEY (nm_id) REFERENCES wildberries.nomenclatures(nm_id),
+			FOREIGN KEY (vendor_Code) REFERENCES wildberries.nomenclatures(vendor_code)
         )
     `
 

@@ -45,6 +45,9 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 		&_postgres.CreateWBProductsTable{},
 		&_postgres.WBCharacteristics{},
 		&_postgres.WBNomenclatures{},
+		&_postgres.WBCardsActual{},
+		&_postgres.WBNomenclaturesHistory{},
+		&_postgres.WBChanges{},
 	}
 
 	for _, _migration := range migrationApply {
@@ -54,7 +57,7 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	}
 	log.Println("WB migrations applied successfully!")
 
-	//_, err = s.cardService.NomenclatureService.GetNomenclatureWithCardCount(101, "")
+	//_, err = s.cardService.NomenclatureService.GetNomenclatureWithLimit(101, "")
 	//if err != nil {
 	//	log.Fatalf("Error getting Nomenclature count: %v", err)
 	//}

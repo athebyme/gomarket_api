@@ -87,7 +87,8 @@ func (u *CardUpdater) UpdateCardNaming(settings request.Settings) (int, error) {
 
 		// wbCard.Title = u.textService.AddWordIfNotExistsToFront(appellationsMap[globalId], v.SubjectName)
 		wbCard.Title = u.textService.ClearAndReduce(appellationsMap[globalId], 60)
-		wbCard.Title = u.textService.RemoveWord(wbCard.Title, wbCard.Brand) // УДАЛЯЕМ БРЕНД ИЗ НАЗВАНИЯ ( УВЕЛИЧИВАЕТ КАЧЕСТВО КАРТОЧКИ ! )
+		//wbCard.Title = u.textService.RemoveWord(wbCard.Title, wbCard.Brand) // УДАЛЯЕМ БРЕНД ИЗ НАЗВАНИЯ ( УВЕЛИЧИВАЕТ КАЧЕСТВО КАРТОЧКИ ! )
+		wbCard.Title = u.textService.ReplaceEngLettersToRus(wbCard.Title)
 		if description, ok := descriptionsMap[globalId]; ok && description != "" {
 			wbCard.Description = u.textService.ClearAndReduce(description, 2000)
 		} else {

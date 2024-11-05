@@ -7,23 +7,25 @@ import (
 	"fmt"
 	"golang.org/x/time/rate"
 	"gomarketplace_api/internal/wildberries/internal/business/models/dto/request"
-	"gomarketplace_api/internal/wildberries/internal/business/models/get"
+	"gomarketplace_api/internal/wildberries/internal/business/models/dto/response"
+	models "gomarketplace_api/internal/wildberries/internal/business/models/get"
 	"gomarketplace_api/internal/wildberries/internal/business/services"
-	get2 "gomarketplace_api/internal/wildberries/internal/business/services/get"
+	"gomarketplace_api/internal/wildberries/internal/business/services/get"
 	clients2 "gomarketplace_api/internal/wildberries/pkg/clients"
 	"gomarketplace_api/pkg/business/service"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 )
 
 type CardUpdater struct {
-	NomenclatureService get2.NomenclatureUpdateGetter
+	NomenclatureService get.NomenclatureService
 	wsclient            *clients2.WServiceClient
 	textService         service.ITextService
 }
 
-func NewCardUpdater(nservice *get2.NomenclatureUpdateGetter, textService service.ITextService, wsClientUrl string) *CardUpdater {
+func NewCardUpdater(nservice *get.NomenclatureService, textService service.ITextService, wsClientUrl string) *CardUpdater {
 	return &CardUpdater{
 		NomenclatureService: *nservice,
 		wsclient:            clients2.NewWServiceClient(wsClientUrl),
@@ -36,72 +38,127 @@ const updateCardsUrl = "https://content-api.wildberries.ru/content/v2/cards/upda
 func UpdateCards() (int, error) {
 	panic("TO DO")
 }
-
 func (u *CardUpdater) UpdateCardNaming(settings request.Settings) (int, error) {
-	var cardsToUpdate []get.WildberriesCard
+	const UPLOAD_SIZE = 300
+	var updatedCount = 0
+	var currentBatch []models.WildberriesCard
+	var currentBatchSize int
 
-	// список всех global ids в wholesaler.products
+	// Список всех global ids в wholesaler.products
 	appellationsMap, err := u.wsclient.FetchAppellations()
+	if err != nil {
+		return 0, fmt.Errorf("Error fetching appellations: %w", err)
+	}
 	descriptionsMap, err := u.wsclient.FetchDescriptions()
 	if err != nil {
-		log.Fatalf("Error fetching Global IDs: %s", err)
+		return 0, fmt.Errorf("Error fetching descriptions: %w", err)
 	}
 
-	var r, b int
-	if settings.Cursor.Limit < 20 {
-		r, b = 5, 5
-	} else if settings.Cursor.Limit < 50 {
-		r, b = 2, 2
-	} else {
-		r, b = 1, 1
-	}
-
-	updated := 0
+	r, b := 3, 3
 
 	limiter := rate.NewLimiter(rate.Limit(r), b)
-	if err := limiter.Wait(context.Background()); err != nil {
-		return updated, err
-	}
-	nomenclatureResponse, err := u.NomenclatureService.GetNomenclature(settings, "")
-	if err != nil {
-		return updated, fmt.Errorf("failed to get nomenclatures: %w", err)
+
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	nomenclatureChan := make(chan response.Nomenclature)
+
+	// Запуск горутин для обработки номенклатур
+	for i := 0; i < r; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			for nomenclature := range nomenclatureChan {
+				var wbCard models.WildberriesCard
+				wbCard = *wbCard.FromNomenclature(nomenclature)
+
+				globalId, err := nomenclature.GlobalID()
+				if err != nil || globalId == 0 {
+					log.Printf("Updating naming | (globalID=%s) parse error (not SPB aricular)", nomenclature.VendorCode)
+					continue
+				}
+				if _, ok := appellationsMap[globalId]; !ok {
+					log.Printf("Updating naming | (globalID=%s) not found appellation", nomenclature.VendorCode)
+					continue
+				}
+
+				// wbCard.Title = u.textService.AddWordIfNotExistsToFront(appellationsMap[globalId], nomenclature.SubjectName)
+				wbCard.Title = u.textService.ClearAndReduce(appellationsMap[globalId], 60)
+				//wbCard.Title = u.textService.RemoveWord(wbCard.Title, wbCard.Brand) // УДАЛЯЕМ БРЕНД ИЗ НАЗВАНИЯ ( УВЕЛИЧИВАЕТ КАЧЕСТВО КАРТОЧКИ ! )
+				wbCard.Title = u.textService.ReplaceEngLettersToRus(wbCard.Title)
+				if description, ok := descriptionsMap[globalId]; ok && description != "" {
+					wbCard.Description = u.textService.ClearAndReduce(description, 2000)
+				} else {
+					wbCard.Description = u.textService.ClearAndReduce(appellationsMap[globalId], 2000)
+				}
+
+				mu.Lock()
+				currentBatch = append(currentBatch, wbCard)
+				currentBatchSize += len([]byte(wbCard.Title)) + len([]byte(wbCard.Description))
+				if len(currentBatch) >= UPLOAD_SIZE || currentBatchSize >= 1<<20 {
+					cards, err := uploadCards(currentBatch)
+					if err != nil {
+						log.Printf("Error during uploading %s", err)
+						// err
+						return
+					}
+					updatedCount += cards
+
+					currentBatch = nil
+					currentBatchSize = 0
+				}
+				mu.Unlock()
+			}
+		}()
 	}
 
-	for _, v := range nomenclatureResponse.Data {
-		var wbCard get.WildberriesCard
-		wbCard = *wbCard.FromNomenclature(v)
+	// Получение номенклатур и отправка их в канал для обработки пакетами по 100
+	packetSizes := divideLimitsToPackets(settings.Cursor.Limit, 100)
+	for _, limit := range packetSizes {
+		settings.Cursor.Limit = limit
+		if err := limiter.Wait(context.Background()); err != nil {
+			return 0, err
+		}
 
-		globalId, err := v.GlobalID()
+		nomenclatureResponse, err := u.NomenclatureService.GetNomenclature(settings, "")
 		if err != nil {
-			log.Printf("(globalID=%s) parse error (not SPB aricular)", v.VendorCode)
-			continue
-		}
-		if globalId == 0 {
-			log.Printf("(globalID=%s) parse error (not SPB aricular)", v.VendorCode)
-			continue
-		}
-		if _, ok := appellationsMap[globalId]; !ok {
-			log.Printf("(globalID=%s) not found appellation", v.VendorCode)
-			continue
+			close(nomenclatureChan)
+			return 0, fmt.Errorf("failed to get nomenclatures: %w", err)
 		}
 
-		// wbCard.Title = u.textService.AddWordIfNotExistsToFront(appellationsMap[globalId], v.SubjectName)
-		wbCard.Title = u.textService.ClearAndReduce(appellationsMap[globalId], 60)
-		//wbCard.Title = u.textService.RemoveWord(wbCard.Title, wbCard.Brand) // УДАЛЯЕМ БРЕНД ИЗ НАЗВАНИЯ ( УВЕЛИЧИВАЕТ КАЧЕСТВО КАРТОЧКИ ! )
-		wbCard.Title = u.textService.ReplaceEngLettersToRus(wbCard.Title)
-		if description, ok := descriptionsMap[globalId]; ok && description != "" {
-			wbCard.Description = u.textService.ClearAndReduce(description, 2000)
+		if len(nomenclatureResponse.Data) == 0 {
+			break
 		} else {
-			wbCard.Description = u.textService.ClearAndReduce(appellationsMap[globalId], 2000)
+			settings.Cursor.UpdatedAt = nomenclatureResponse.Data[len(nomenclatureResponse.Data)-1].UpdatedAt
+			settings.Cursor.NmID = nomenclatureResponse.Data[len(nomenclatureResponse.Data)-1].NmID
 		}
-		cardsToUpdate = append(cardsToUpdate, wbCard)
+
+		for _, nomenclature := range nomenclatureResponse.Data {
+			nomenclatureChan <- nomenclature
+		}
 	}
 
-	requestBody, err := json.Marshal(cardsToUpdate)
+	close(nomenclatureChan)
+	wg.Wait()
+
+	// Добавляем оставшиеся данные в cardsToUpdate
+	if len(currentBatch) > 0 {
+		cards, err := uploadCards(currentBatch)
+		if err != nil {
+			return 0, err
+		}
+		updatedCount += cards
+	}
+
+	return updatedCount, nil
+}
+
+func uploadCards(cards []models.WildberriesCard) (int, error) {
+	log.Printf("Sending updated card to Wildberries...")
+	requestBody, err := json.Marshal(cards)
 	if err != nil {
 		return 0, fmt.Errorf("failed to marshal update request: %w", err)
 	}
-	log.Printf("Updating cards: %s", string(requestBody))
 
 	req, err := http.NewRequest("POST", updateCardsUrl, bytes.NewBuffer(requestBody))
 	if err != nil {
@@ -111,7 +168,7 @@ func (u *CardUpdater) UpdateCardNaming(settings request.Settings) (int, error) {
 	req.Header.Set("Content-Type", "application/json")
 	services.SetAuthorizationHeader(req)
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return 0, fmt.Errorf("failed to update cards: %w", err)
@@ -122,7 +179,19 @@ func (u *CardUpdater) UpdateCardNaming(settings request.Settings) (int, error) {
 		return 0, fmt.Errorf("update failed with status: %d", resp.StatusCode)
 	}
 
-	// update card history
+	// Обновление истории карт
 
-	return len(cardsToUpdate), nil
+	return len(cards), nil
+}
+
+func divideLimitsToPackets(totalCount int, packetSize int) []int {
+	var packets []int
+	for count := totalCount; count > 0; count -= packetSize {
+		if count >= packetSize {
+			packets = append(packets, packetSize)
+		} else {
+			packets = append(packets, count)
+		}
+	}
+	return packets
 }

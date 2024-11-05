@@ -3,7 +3,8 @@ package service
 import "database/sql"
 
 type PostgresLoader struct {
-	db *sql.DB
+	db    *sql.DB
+	Table string
 }
 
 func NewPostgresLoader(db *sql.DB) *PostgresLoader {
@@ -24,7 +25,7 @@ func (p *PostgresLoader) InsertCardHistory(cardData map[string]interface{}, vers
 		INSERT INTO wildberries.cards_history (global_id, nm_id, vendor_code, vesion, version_data)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 		cardData["globalID"], cardData["nmID"], cardData["vendorCode"],
-		cardData["version"], cardData["version_data"])
+		version, cardData["version_data"])
 	return err
 }
 

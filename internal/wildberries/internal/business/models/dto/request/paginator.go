@@ -16,18 +16,18 @@ type PaginatorCursor struct {
 	NmID      int    `json:"nmId"`
 }
 
-func (p *Paginator) GetPaginatorCursor() PaginatorCursor {
+func (p Paginator) GetPaginatorCursor() PaginatorCursor {
 	return PaginatorCursor{UpdatedAt: p.UpdatedAt, NmID: p.NmID}
 }
 
-func (p *Paginator) TotalCards() int {
+func (p Paginator) TotalCards() int {
 	return p.Total
 }
 
-func (pc *PaginatorCursor) TotalCards() int {
+func (pc PaginatorCursor) TotalCards() int {
 	return -1
 }
 
-func (pc *PaginatorCursor) GetPaginatorCursor() PaginatorCursor {
-	return *pc
+func (pc PaginatorCursor) GetPaginatorCursor() PaginatorCursor {
+	return pc
 }

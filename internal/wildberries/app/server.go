@@ -4,8 +4,9 @@ import (
 	"gomarketplace_api/build/_postgres"
 	"gomarketplace_api/config"
 	"gomarketplace_api/internal/wildberries/internal/business/models/dto/request"
+	get2 "gomarketplace_api/internal/wildberries/internal/business/models/get"
 	"gomarketplace_api/internal/wildberries/internal/business/services/get"
-	update2 "gomarketplace_api/internal/wildberries/internal/business/services/update"
+	"gomarketplace_api/internal/wildberries/internal/business/services/update"
 	"gomarketplace_api/pkg/business/service"
 	"gomarketplace_api/pkg/dbconnect/migration"
 	"gomarketplace_api/pkg/dbconnect/postgres"
@@ -13,7 +14,7 @@ import (
 )
 
 type WildberriesServer struct {
-	cardService *update2.CardUpdater
+	cardService *update.CardUpdater
 }
 
 func NewWbServer() *WildberriesServer {
@@ -32,8 +33,11 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	}
 	defer db.Close()
 
-	nomenclatureUpdGet := get.NewNomenclatureUpdateGetter(db)
-	s.cardService = update2.NewCardUpdater(
+	loader := service.NewPostgresLoader(db)
+	ch := make(chan bool)
+	updater := get2.NewUpdater(loader, ch)
+	nomenclatureUpdGet := get.NewNomenclatureUpdateGetter(db, *updater)
+	s.cardService = update.NewCardUpdater(
 		nomenclatureUpdGet,
 		service.NewTextService(),
 		"http://localhost:8081",
@@ -56,8 +60,17 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 		}
 	}
 	log.Println("WB migrations applied successfully!")
+	//
+	//_, err = s.cardService.NomenclatureService.UpdateNomenclature(request.Settings{
+	//	Sort:   request.Sort{Ascending: false},
+	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+	//	Cursor: request.Cursor{Limit: 1},
+	//}, "")
+	//if err != nil {
+	//	log.Fatalf("Error getting Nomenclature count: %v", err)
+	//}
 
-	//_, err = s.cardService.NomenclatureService.GetNomenclatureWithLimit(101, "")
+	//res, err := s.cardService.NomenclatureService.GetNomenclaturesWithLimit(1000, "")
 	//if err != nil {
 	//	log.Fatalf("Error getting Nomenclature count: %v", err)
 	//}
@@ -65,7 +78,7 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	updateAppellations, err := s.cardService.UpdateCardNaming(request.Settings{
 		Sort:   request.Sort{Ascending: false},
 		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-		Cursor: request.Cursor{Limit: 100},
+		Cursor: request.Cursor{Limit: 1500},
 	})
 
 	if err != nil {

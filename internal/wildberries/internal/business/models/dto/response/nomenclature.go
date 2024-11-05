@@ -1,6 +1,7 @@
 package response
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 )
@@ -28,5 +29,17 @@ func (n *Nomenclature) GlobalID() (int, error) {
 	pattern := `\w*-(\d*)-\w*`
 	re := regexp.MustCompile(pattern)
 	match := re.FindAllStringSubmatch(n.VendorCode, -1)
-	return strconv.Atoi(match[0][1])
+
+	// Проверяем, что найдено хотя бы одно совпадение и нужная группа
+	if len(match) == 0 || len(match[0]) < 2 {
+		return 0, fmt.Errorf("no match found in VendorCode: %s", n.VendorCode)
+	}
+
+	// Преобразуем найденное значение в int
+	globalID, err := strconv.Atoi(match[0][1])
+	if err != nil {
+		return 0, fmt.Errorf("failed to convert global ID: %w", err)
+	}
+
+	return globalID, nil
 }

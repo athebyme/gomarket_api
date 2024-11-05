@@ -69,7 +69,7 @@ func (ts *TextService) RemoveTags(input string) string {
 func (ts *TextService) RemoveSpecialChars(input string) string {
 	var builder strings.Builder
 	for _, r := range input {
-		if !strings.ContainsRune("•@#$%^&*_[]{}|;'\"<>/", r) {
+		if !strings.ContainsRune("•@#$%^&*_[]{}|;'\"<>/®™▪", r) {
 			builder.WriteString(string(r))
 		}
 	}

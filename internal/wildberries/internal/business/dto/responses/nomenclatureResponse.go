@@ -6,6 +6,6 @@ import (
 )
 
 type NomenclatureResponse struct {
-	Data      []response.Nomenclature `json:"cards"`
-	Paginator request.Paginator       `json:"cursor"`
+	Data   []response.Nomenclature `json:"cards"`
+	Cursor request.Cursor          `json:"cursor"`
 }

@@ -3,7 +3,6 @@ package app
 import (
 	"gomarketplace_api/build/_postgres"
 	"gomarketplace_api/config"
-	"gomarketplace_api/internal/wildberries/internal/business/models/dto/request"
 	get2 "gomarketplace_api/internal/wildberries/internal/business/models/get"
 	"gomarketplace_api/internal/wildberries/internal/business/services/get"
 	"gomarketplace_api/internal/wildberries/internal/business/services/update"
@@ -70,19 +69,21 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	//	log.Fatalf("Error getting Nomenclature count: %v", err)
 	//}
 
-	//res, err := s.cardService.NomenclatureService.GetNomenclaturesWithLimit(1000, "")
-	//if err != nil {
-	//	log.Fatalf("Error getting Nomenclature count: %v", err)
-	//}
-
-	updateAppellations, err := s.cardService.UpdateCardNaming(request.Settings{
-		Sort:   request.Sort{Ascending: false},
-		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-		Cursor: request.Cursor{Limit: 1500},
-	})
-
+	res, err := s.cardService.NomenclatureService.GetNomenclaturesWithLimitConcurrency(15000, "")
 	if err != nil {
-		log.Fatalf("Error updating nomenclatures: %s\n", err)
+		log.Fatalf("Error getting Nomenclature count: %v", err)
 	}
-	log.Printf("\n\n\nUpdated %d nomenclatures\n", updateAppellations)
+
+	log.Printf("nomenclatures : %d", len(res))
+
+	//updateAppellations, err := s.cardService.UpdateCardNaming(request.Settings{
+	//	Sort:   request.Sort{Ascending: false},
+	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+	//	Cursor: request.Cursor{Limit: 1500},
+	//})
+	//
+	//if err != nil {
+	//	log.Fatalf("Error updating nomenclatures: %s\n", err)
+	//}
+	//log.Printf("\n\n\nUpdated %d nomenclatures\n", updateAppellations)
 }

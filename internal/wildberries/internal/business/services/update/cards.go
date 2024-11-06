@@ -120,7 +120,7 @@ func (u *CardUpdater) UpdateCardNaming(settings request.Settings) (int, error) {
 			return 0, err
 		}
 
-		nomenclatureResponse, err := u.NomenclatureService.GetNomenclature(settings, "")
+		nomenclatureResponse, err := u.NomenclatureService.GetNomenclatures(settings, "")
 		if err != nil {
 			close(nomenclatureChan)
 			return 0, fmt.Errorf("failed to get nomenclatures: %w", err)

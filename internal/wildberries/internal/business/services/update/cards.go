@@ -47,11 +47,11 @@ func (u *CardUpdater) UpdateCardNaming(settings request.Settings) (int, error) {
 	// Список всех global ids в wholesaler.products
 	appellationsMap, err := u.wsclient.FetchAppellations()
 	if err != nil {
-		return 0, fmt.Errorf("Error fetching appellations: %w", err)
+		return 0, fmt.Errorf("error fetching appellations: %w", err)
 	}
 	descriptionsMap, err := u.wsclient.FetchDescriptions()
 	if err != nil {
-		return 0, fmt.Errorf("Error fetching descriptions: %w", err)
+		return 0, fmt.Errorf("error fetching descriptions: %w", err)
 	}
 
 	r, b := 3, 3
@@ -67,7 +67,6 @@ func (u *CardUpdater) UpdateCardNaming(settings request.Settings) (int, error) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-
 			for nomenclature := range nomenclatureChan {
 				var wbCard models.WildberriesCard
 				wbCard = *wbCard.FromNomenclature(nomenclature)

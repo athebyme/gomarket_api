@@ -15,21 +15,6 @@ func NewProductService(repo *storage.ProductRepository) *ProductService {
 	return &ProductService{repo: repo}
 }
 
-func (s *ProductService) CreateProduct(product *models.Product) error {
-	if product.Model == "" || product.Category == "" {
-		return errors.New("model and category are required")
-	}
-
-	log.Printf("Creating product: %s", product.Model)
-
-	if err := s.repo.Insert(product); err != nil {
-		return err
-	}
-
-	log.Printf("Product created with ID: %d", product.ID)
-	return nil
-}
-
 func (s *ProductService) GetProductByID(id int) (*models.Product, error) {
 	if id <= 0 {
 		return nil, errors.New("invalid product ID")
@@ -73,31 +58,6 @@ func (s *ProductService) GetProductsByIDs(ids []int) ([]*models.Product, error) 
 	}
 
 	return products, nil
-}
-
-func (s *ProductService) UpdateProduct(product *models.Product) error {
-	if product.ID <= 0 {
-		return errors.New("invalid product ID")
-	}
-
-	if err := s.repo.Update(product); err != nil {
-		return err
-	}
-
-	log.Printf("Updated product with ID: %d", product.ID)
-	return nil
-}
-func (s *ProductService) DeleteProduct(id int) error {
-	if id <= 0 {
-		return errors.New("invalid product ID")
-	}
-
-	if err := s.repo.Delete(id); err != nil {
-		return err
-	}
-
-	log.Printf("Deleted product with ID: %d", id)
-	return nil
 }
 
 func (s *ProductService) GetAllGlobalIDs() ([]int, error) {

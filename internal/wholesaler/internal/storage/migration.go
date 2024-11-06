@@ -69,7 +69,6 @@ func (m *WholesalerDescriptions) UpMigration(db *sql.DB) error {
 			CREATE TABLE IF NOT EXISTS wholesaler.descriptions (
 			global_id INT,
 			product_description TEXT,
-			product_appellation TEXT,
 			FOREIGN KEY (global_id) REFERENCES wholesaler.products(global_id)
 		);
 		`
@@ -102,7 +101,6 @@ func (m *WholesalerStock) UpMigration(db *sql.DB) error {
 		`
 		CREATE TABLE IF NOT EXISTS wholesaler.stocks (
 		    global_id INT,
-		    main_articular VARCHAR(255) NOT NULL,
 		    stocks INT,
 		    FOREIGN KEY (global_id) REFERENCES wholesaler.products(global_id)
 		);
@@ -198,6 +196,45 @@ func (m *MigrationsSchema) UpMigration(db *sql.DB) error {
 	if err != nil {
 		return fmt.Errorf("failed to create migrations table: %w", err)
 	}
+	return nil
+}
+
+type Metadata struct{}
+
+// UpMigration - создает таблицу metadata, если она еще не существует.
+func (m *Metadata) UpMigration(db *sql.DB) error {
+	// Проверяем, была ли применена миграция.
+	var migrationExists bool
+	err := db.QueryRow("SELECT EXISTS (SELECT 1 FROM migrations.migrations WHERE name = 'metadata')").Scan(&migrationExists)
+	if err != nil {
+		return fmt.Errorf("failed to check migration status: %w", err)
+	}
+	if migrationExists {
+		log.Println("Migration 'metadata' already completed. Skipping.")
+		return nil
+	}
+
+	// Создаем таблицу metadata, если она еще не существует.
+	query := `
+		CREATE TABLE IF NOT EXISTS metadata (
+		    id SERIAL PRIMARY KEY,
+		    key_name VARCHAR(255) UNIQUE NOT NULL,
+		    value TEXT,
+		    last_update TIMESTAMP
+		);
+	`
+	_, err = db.Exec(query)
+	if err != nil {
+		return fmt.Errorf("failed to create metadata table: %w", err)
+	}
+
+	// Добавляем запись о миграции в таблицу migrations.
+	_, err = db.Exec("INSERT INTO migrations.migrations (name, time) VALUES ('metadata', current_timestamp)")
+	if err != nil {
+		return fmt.Errorf("failed to mark metadata migration as complete: %w", err)
+	}
+
+	log.Println("Migration 'metadata' completed successfully.")
 	return nil
 }
 

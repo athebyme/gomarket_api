@@ -24,6 +24,7 @@ func main() {
 		wserver.Run(&synchronize)
 		wg.Done()
 	}()
+
 	go func() {
 		wbserver := wbapp.NewWbServer()
 		wbserver.Run(&synchronize)

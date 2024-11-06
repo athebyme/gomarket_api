@@ -4,32 +4,18 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"gomarketplace_api/config"
 	"gomarketplace_api/internal/wholesaler/internal/models"
 	"log"
 )
 
 type StocksRepository struct {
-	DB *sql.DB
+	db      *sql.DB
+	updater Updater
 }
 
-func NewStocksRepository() (*StocksRepository, error) {
-	cfg := config.GetConfig()
-	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName)
-
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		return nil, err
-	}
-
-	if err = db.Ping(); err != nil {
-		return nil, err
-	}
-
+func NewStocksRepository(db *sql.DB, updater Updater) *StocksRepository {
 	log.Println("Successfully connected to wholesaler stocks repository")
-
-	return &StocksRepository{DB: db}, nil
+	return &StocksRepository{db: db, updater: updater}
 }
 
 func (r *StocksRepository) GetStocksByProductID(id int) (*models.Stocks, error) {
@@ -39,7 +25,7 @@ func (r *StocksRepository) GetStocksByProductID(id int) (*models.Stocks, error) 
 		WHERE global_id = $1
 		`
 	var stocks models.Stocks
-	err := r.DB.QueryRow(query, id).Scan(
+	err := r.db.QueryRow(query, id).Scan(
 		&stocks.ID, &stocks.MainArticular, &stocks.Stocks,
 	)
 
@@ -53,6 +39,11 @@ func (r *StocksRepository) GetStocksByProductID(id int) (*models.Stocks, error) 
 	return &stocks, nil
 }
 
+// Update args - аргументы для обновления. пока что поддерживается только ренейминг колонок
+func (r *StocksRepository) Update(args ...[]string) error {
+	return r.updater.Update(args...)
+}
+
 func (r *StocksRepository) Close() error {
-	return r.DB.Close()
+	return r.db.Close()
 }

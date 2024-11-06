@@ -3,6 +3,7 @@ package app
 import (
 	"gomarketplace_api/build/_postgres"
 	"gomarketplace_api/config"
+	"gomarketplace_api/internal/wildberries/internal/business/models/dto/request"
 	get2 "gomarketplace_api/internal/wildberries/internal/business/models/get"
 	"gomarketplace_api/internal/wildberries/internal/business/services/get"
 	"gomarketplace_api/internal/wildberries/internal/business/services/update"
@@ -59,17 +60,17 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 		}
 	}
 	log.Println("WB migrations applied successfully!")
-	//
-	//_, err = s.cardService.NomenclatureService.UpdateNomenclature(request.Settings{
-	//	Sort:   request.Sort{Ascending: false},
-	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-	//	Cursor: request.Cursor{Limit: 1},
-	//}, "")
-	//if err != nil {
-	//	log.Fatalf("Error getting Nomenclature count: %v", err)
-	//}
 
-	res, err := s.cardService.NomenclatureService.GetNomenclaturesWithLimitConcurrency(15000, "")
+	_, err = s.cardService.NomenclatureService.UploadToDb(request.Settings{
+		Sort:   request.Sort{Ascending: false},
+		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+		Cursor: request.Cursor{Limit: 10500},
+	}, "")
+	if err != nil {
+		log.Fatalf("Error getting Nomenclature count: %v", err)
+	}
+
+	res, err := s.cardService.NomenclatureService.GetNomenclaturesWithLimitConcurrency(108, "")
 	if err != nil {
 		log.Fatalf("Error getting Nomenclature count: %v", err)
 	}

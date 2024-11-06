@@ -4,32 +4,21 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"gomarketplace_api/config"
 	"gomarketplace_api/internal/wholesaler/internal/models"
 	"log"
 )
 
 type PriceRepository struct {
-	DB *sql.DB
+	db      *sql.DB
+	updater Updater
 }
 
-func NewPriceRepository() (*PriceRepository, error) {
-	cfg := config.GetConfig()
-	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName)
-
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		return nil, err
-	}
-
-	if err = db.Ping(); err != nil {
-		return nil, err
-	}
-
+func NewPriceRepository(db *sql.DB, updater Updater) *PriceRepository {
 	log.Println("Successfully created wholesaler price repository")
-
-	return &PriceRepository{DB: db}, nil
+	return &PriceRepository{
+		db:      db,
+		updater: updater,
+	}
 }
 
 func (r *PriceRepository) GetPriceByProductID(id int) (*models.Price, error) {
@@ -38,7 +27,7 @@ func (r *PriceRepository) GetPriceByProductID(id int) (*models.Price, error) {
 				WHERE global_id = $1;
 			 `
 	var price models.Price
-	err := r.DB.QueryRow(query, id).Scan(
+	err := r.db.QueryRow(query, id).Scan(
 		&price.ID, &price.Price,
 	)
 	if err != nil {
@@ -50,6 +39,10 @@ func (r *PriceRepository) GetPriceByProductID(id int) (*models.Price, error) {
 	return &price, nil
 }
 
+func (repo *PriceRepository) Update(args ...[]string) error {
+	return repo.updater.Update(args...)
+}
+
 func (r *PriceRepository) Close() error {
-	return r.DB.Close()
+	return r.db.Close()
 }

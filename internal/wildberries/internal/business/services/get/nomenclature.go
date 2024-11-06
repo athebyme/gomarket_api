@@ -73,7 +73,6 @@ func (d *NomenclatureService) GetNomenclaturesWithLimitConcurrency(limit int, lo
 	log.Printf("Getting wildberries nomenclatures with limit: %d", limit)
 
 	data := sync.Map{}
-
 	limiter := rate.NewLimiter(rate.Limit(2), 2)
 	client := clients.NewGlobalIDsClient("http://localhost:8081")
 
@@ -92,6 +91,7 @@ func (d *NomenclatureService) GetNomenclaturesWithLimitConcurrency(limit int, lo
 	packetSizes := divideLimitsToPackets(limit, 100)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
+	var activeGoroutines int
 	limitChan := make(chan int, len(packetSizes))
 	dataChan := make(chan response.Nomenclature)
 	doneOnce := sync.Once{}
@@ -118,6 +118,19 @@ func (d *NomenclatureService) GetNomenclaturesWithLimitConcurrency(limit int, lo
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
+			mu.Lock()
+			activeGoroutines++
+			mu.Unlock()
+			defer func() {
+				mu.Lock()
+				activeGoroutines--
+				if activeGoroutines == 0 {
+					log.Printf("It seems that we got all items.")
+					doneOnce.Do(func() { close(dataChan) })
+				}
+				mu.Unlock()
+			}()
+
 			for {
 				select {
 				case packetLimit, ok := <-limitChan:
@@ -149,13 +162,12 @@ func (d *NomenclatureService) GetNomenclaturesWithLimitConcurrency(limit int, lo
 
 						numItems := len(nomenclatureResponse.Data)
 						if numItems == 0 {
-							log.Printf("No more data to process")
-							// ? doneOnce.Do(func() { close(dataChan) })
+							log.Printf("No more data to process. Finishing this job ..")
 							mu.Unlock()
 							return
 						}
 
-						log.Printf("Goroutine %d has done the job ! (lastNmID=%d, count=%d)", i, nomenclatureResponse.Data[len(nomenclatureResponse.Data)-1].NmID, numItems)
+						log.Printf("Goroutine %d has done the job! (lastNmID=%d, count=%d)", i, nomenclatureResponse.Data[len(nomenclatureResponse.Data)-1].NmID, numItems)
 						cursor.UpdatedAt = nomenclatureResponse.Data[len(nomenclatureResponse.Data)-1].UpdatedAt
 						cursor.NmID = nomenclatureResponse.Data[len(nomenclatureResponse.Data)-1].NmID
 						log.Printf("Cursor state after request: NmID=%d, UpdatedAt=%v", cursor.NmID, cursor.UpdatedAt)
@@ -169,7 +181,6 @@ func (d *NomenclatureService) GetNomenclaturesWithLimitConcurrency(limit int, lo
 						// Проверка: если общее количество обработанных товаров меньше лимита, то завершить обработку
 						if totalProcessed >= limit {
 							log.Printf("Total processed items (%d) have reached or exceeded the Limit (%d)", totalProcessed, limit)
-							doneOnce.Do(func() { close(dataChan) })
 							return
 						}
 
@@ -192,16 +203,13 @@ func (d *NomenclatureService) GetNomenclaturesWithLimitConcurrency(limit int, lo
 	close(limitChan)
 	wg.Wait()
 
-	// Закрываем dataChan только после завершения всех горутин, или если он не был завершен по каким то причинам
-	doneOnce.Do(func() { close(dataChan) })
-
 	dataMap := make(map[int]response.Nomenclature)
 	data.Range(func(key, value interface{}) bool {
 		dataMap[key.(int)] = value.(response.Nomenclature)
 		return true
 	})
 
-	log.Printf("Total items processed: %d. Successes : %d. Errors : %d", len(dataMap), len(dataMap)-totalErrors, totalErrors)
+	log.Printf("Total items processed: %d. Successes: %d. Errors: %d", len(dataMap), len(dataMap)-totalErrors, totalErrors)
 
 	return dataMap, nil
 }
@@ -209,9 +217,9 @@ func (d *NomenclatureService) GetNomenclaturesWithLimitConcurrency(limit int, lo
 /*
 Возвращает число обновленных(добавленных) карточек
 */
-func (d *NomenclatureService) UpdateNomenclature(settings request.Settings, locale string) (int, error) {
+func (d *NomenclatureService) UploadToDb(settings request.Settings, locale string) (int, error) {
 	log.Printf("Updating wildberries.nomenclatures")
-	const batchSize = 5
+	log.SetPrefix("NM UPDATER | ")
 	updated := 0
 
 	// Получаем существующие номенклатуры из БД
@@ -249,9 +257,11 @@ func (d *NomenclatureService) UpdateNomenclature(settings request.Settings, loca
 			for {
 				select {
 				case <-done:
+					log.Printf("Goroutine (%d) : Everything is done. Exit", i)
 					return // завершение горутины, если сигнал от done
 				case limit, ok := <-limitChan:
 					if !ok {
+						log.Printf("All jobs are taken. Goroutine (%d) ended its job", i)
 						return // завершение, если канал закрыт
 					}
 
@@ -259,63 +269,70 @@ func (d *NomenclatureService) UpdateNomenclature(settings request.Settings, loca
 						log.Printf("Rate limiter error: %s", err)
 						return
 					}
-
-					mu.Lock()
-					cursor.Limit = limit
-					nomenclatureResponse, err := d.GetNomenclatures(request.Settings{
-						Sort:   settings.Sort,
-						Filter: settings.Filter,
-						Cursor: cursor,
-					}, locale)
-					if err != nil {
-						log.Printf("Failed to get nomenclatures: %s", err)
-						mu.Unlock()
-						return
-					}
-
-					if len(nomenclatureResponse.Data) == 0 {
-						once.Do(func() {
-							log.Printf("Finishing all jobs..")
-							close(done)
-							limiter.SetLimit(100)
-						}) // Закрываем done только один раз
-						mu.Unlock()
-						return
-					}
-
-					log.Printf("Goroutine has some job to do ! (lastNmID=%d)", nomenclatureResponse.Data[len(nomenclatureResponse.Data)-1].NmID)
-					cursor.UpdatedAt = nomenclatureResponse.Data[len(nomenclatureResponse.Data)-1].UpdatedAt
-					cursor.NmID = nomenclatureResponse.Data[len(nomenclatureResponse.Data)-1].NmID
-					mu.Unlock()
-
-					var localBatch []interface{}
-					for _, nomenclature := range nomenclatureResponse.Data {
-						globalId, err := nomenclature.GlobalID()
-						if err != nil || globalId == 0 {
-							continue
-						}
-
-						if _, exists := existIDs[globalId]; exists || !contains(globalIDsMap, globalId) {
-							continue
-						}
-
-						localBatch = append(localBatch, globalId, nomenclature.NmID, nomenclature.ImtID,
-							nomenclature.NmUUID, nomenclature.VendorCode, nomenclature.SubjectID,
-							nomenclature.Brand, nomenclature.CreatedAt, nomenclature.UpdatedAt)
-
+					for {
 						mu.Lock()
-						existIDs[globalId] = struct{}{}
-						updated++
-						mu.Unlock()
-					}
-
-					if len(localBatch) >= batchSize*12 {
-						mu.Lock()
-						if err := d.insertBatchNomenclatures(localBatch); err != nil {
-							log.Printf("Failed to insert batch: %s", err)
+						log.Printf("Goroutine (%d) (lastNmID=%d) before request", i, cursor.NmID)
+						cursor.Limit = limit
+						log.Printf("Goroutine (%d) getting nomenclatures from server...", i)
+						nomenclatureResponse, err := d.GetNomenclatures(request.Settings{
+							Sort:   settings.Sort,
+							Filter: settings.Filter,
+							Cursor: cursor,
+						}, locale)
+						if err != nil {
+							log.Printf("Failed to get nomenclatures: %s", err)
+							mu.Unlock()
+							return
 						}
+
+						if len(nomenclatureResponse.Data) == 0 {
+							once.Do(func() {
+								log.Printf("Finishing all jobs..")
+								close(done)
+							}) // Закрываем done только один раз
+							mu.Unlock()
+							return
+						}
+						log.Printf("Goroutine (%d) got (%d) nomenclatures from server", i, len(nomenclatureResponse.Data))
+
+						cursor.UpdatedAt = nomenclatureResponse.Data[len(nomenclatureResponse.Data)-1].UpdatedAt
+						cursor.NmID = nomenclatureResponse.Data[len(nomenclatureResponse.Data)-1].NmID
+						log.Printf("Goroutine (%d) (lastNmID=%d) after request", i, cursor.NmID)
+
 						mu.Unlock()
-						localBatch = nil
+
+						var localBatch []interface{}
+						for _, nomenclature := range nomenclatureResponse.Data {
+							globalId, err := nomenclature.GlobalID()
+							if err != nil || globalId == 0 {
+								continue
+							}
+
+							mu.Lock()
+							if _, exists := existIDs[globalId]; exists || !contains(globalIDsMap, globalId) {
+								continue
+							}
+							mu.Unlock()
+
+							localBatch = append(localBatch, globalId, nomenclature.NmID, nomenclature.ImtID,
+								nomenclature.NmUUID, nomenclature.VendorCode, nomenclature.SubjectID,
+								nomenclature.Brand, nomenclature.CreatedAt, nomenclature.UpdatedAt)
+
+							mu.Lock()
+							existIDs[globalId] = struct{}{}
+							updated++
+							mu.Unlock()
+						}
+
+						if len(localBatch) > 0 {
+							mu.Lock()
+							log.Printf("Goroutine (%d) uploading data to DB... ")
+							if err := d.insertBatchNomenclatures(localBatch); err != nil {
+								log.Printf("Failed to insert batch: %s", err)
+							}
+							mu.Unlock()
+						}
+						break
 					}
 				}
 			}
@@ -328,11 +345,13 @@ func (d *NomenclatureService) UpdateNomenclature(settings request.Settings, loca
 		case <-done:
 			break // прекращаем отправку лимитов, если данные закончились
 		case limitChan <- limit:
+			log.Printf("Sent limit %d to limitChan", limit)
 		}
 	}
 	close(limitChan) // Закрытие канала после передачи всех лимитов
 
 	wg.Wait()
+	log.SetPrefix("")
 	return updated, nil
 }
 

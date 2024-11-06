@@ -227,131 +227,32 @@ func (d *NomenclatureService) UploadToDb(settings request.Settings, locale strin
 	if err != nil {
 		return updated, err
 	}
-
-	limiter := rate.NewLimiter(rate.Limit(2), 10)
+	log.Printf("len (existIDs)=%d", len(existIDs))
 	client := clients.NewGlobalIDsClient("http://localhost:8081")
 
 	// Инициализируем мапу globalIDsMap
-	globalIDs, err := client.FetchGlobalIDs()
+	globalIDsFromDB, err := client.FetchGlobalIDs()
 	if err != nil {
 		log.Fatalf("Error fetching Global IDs: %s", err)
 	}
-	globalIDsMap := make(map[int]struct{}, len(globalIDs))
-	for _, globalID := range globalIDs {
+	globalIDsMap := make(map[int]struct{}, len(globalIDsFromDB))
+	for _, globalID := range globalIDsFromDB {
 		globalIDsMap[globalID] = struct{}{}
 	}
+	log.Printf("len(db globalIDsMap)=%d", len(globalIDsMap))
 
-	cursor := settings.Cursor
-	packetSizes := divideLimitsToPackets(settings.Cursor.Limit, 100)
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	var once sync.Once
-	limitChan := make(chan int)
-	done := make(chan struct{}) // канал для завершения всех горутин, если данные закончились
-
-	// Запуск горутин для параллельной обработки пакетов
-	for i := 0; i < len(packetSizes); i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			for {
-				select {
-				case <-done:
-					log.Printf("Goroutine (%d) : Everything is done. Exit", i)
-					return // завершение горутины, если сигнал от done
-				case limit, ok := <-limitChan:
-					if !ok {
-						log.Printf("All jobs are taken. Goroutine (%d) ended its job", i)
-						return // завершение, если канал закрыт
-					}
-
-					if err := limiter.Wait(context.Background()); err != nil {
-						log.Printf("Rate limiter error: %s", err)
-						return
-					}
-					for {
-						mu.Lock()
-						log.Printf("Goroutine (%d) (lastNmID=%d) before request", i, cursor.NmID)
-						cursor.Limit = limit
-						log.Printf("Goroutine (%d) getting nomenclatures from server...", i)
-						nomenclatureResponse, err := d.GetNomenclatures(request.Settings{
-							Sort:   settings.Sort,
-							Filter: settings.Filter,
-							Cursor: cursor,
-						}, locale)
-						if err != nil {
-							log.Printf("Failed to get nomenclatures: %s", err)
-							mu.Unlock()
-							return
-						}
-
-						if len(nomenclatureResponse.Data) == 0 {
-							once.Do(func() {
-								log.Printf("Finishing all jobs..")
-								close(done)
-							}) // Закрываем done только один раз
-							mu.Unlock()
-							return
-						}
-						log.Printf("Goroutine (%d) got (%d) nomenclatures from server", i, len(nomenclatureResponse.Data))
-
-						cursor.UpdatedAt = nomenclatureResponse.Data[len(nomenclatureResponse.Data)-1].UpdatedAt
-						cursor.NmID = nomenclatureResponse.Data[len(nomenclatureResponse.Data)-1].NmID
-						log.Printf("Goroutine (%d) (lastNmID=%d) after request", i, cursor.NmID)
-
-						mu.Unlock()
-
-						var localBatch []interface{}
-						for _, nomenclature := range nomenclatureResponse.Data {
-							globalId, err := nomenclature.GlobalID()
-							if err != nil || globalId == 0 {
-								continue
-							}
-
-							mu.Lock()
-							if _, exists := existIDs[globalId]; exists || !contains(globalIDsMap, globalId) {
-								continue
-							}
-							mu.Unlock()
-
-							localBatch = append(localBatch, globalId, nomenclature.NmID, nomenclature.ImtID,
-								nomenclature.NmUUID, nomenclature.VendorCode, nomenclature.SubjectID,
-								nomenclature.Brand, nomenclature.CreatedAt, nomenclature.UpdatedAt)
-
-							mu.Lock()
-							existIDs[globalId] = struct{}{}
-							updated++
-							mu.Unlock()
-						}
-
-						if len(localBatch) > 0 {
-							mu.Lock()
-							log.Printf("Goroutine (%d) uploading data to DB... ")
-							if err := d.insertBatchNomenclatures(localBatch); err != nil {
-								log.Printf("Failed to insert batch: %s", err)
-							}
-							mu.Unlock()
-						}
-						break
-					}
-				}
-			}
-		}(i)
+	var limit int
+	if settings.Cursor.Limit > len(globalIDsMap) {
+		limit = len(globalIDsMap)
+	} else {
+		limit = settings.Cursor.Limit
 	}
 
-	// Передача пакетов в канал
-	for _, limit := range packetSizes {
-		select {
-		case <-done:
-			break // прекращаем отправку лимитов, если данные закончились
-		case limitChan <- limit:
-			log.Printf("Sent limit %d to limitChan", limit)
-		}
-	}
-	close(limitChan) // Закрытие канала после передачи всех лимитов
+	itemsFromWB, err := d.GetNomenclaturesWithLimitConcurrency(limit, locale)
+	log.Printf("len(itemsFromWB)=%d", len(itemsFromWB))
+	log.Printf("%v", itemsFromWB[9574])
+	time.Sleep(100000 * time.Millisecond)
 
-	wg.Wait()
-	log.SetPrefix("")
 	return updated, nil
 }
 

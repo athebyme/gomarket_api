@@ -21,6 +21,7 @@ import (
 
 const HtmlRequestLimit = 3
 
+// NomenclatureService -- сервис по работе с номенклатурами. get-update
 type NomenclatureService struct {
 	db            *sql.DB
 	updateService get.UpdateService

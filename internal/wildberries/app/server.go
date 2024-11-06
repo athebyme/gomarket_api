@@ -70,12 +70,12 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 		log.Fatalf("Error getting Nomenclature count: %v", err)
 	}
 
-	res, err := s.cardService.NomenclatureService.GetNomenclaturesWithLimitConcurrency(108, "")
-	if err != nil {
-		log.Fatalf("Error getting Nomenclature count: %v", err)
-	}
-
-	log.Printf("nomenclatures : %d", len(res))
+	//res, err := s.cardService.NomenclatureService.GetNomenclaturesWithLimitConcurrency(108, "")
+	//if err != nil {
+	//	log.Fatalf("Error getting Nomenclature count: %v", err)
+	//}
+	//
+	//log.Printf("nomenclatures : %d", len(res))
 
 	//updateAppellations, err := s.cardService.UpdateCardNaming(request.Settings{
 	//	Sort:   request.Sort{Ascending: false},

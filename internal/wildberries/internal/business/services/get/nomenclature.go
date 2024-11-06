@@ -19,6 +19,8 @@ import (
 	"time"
 )
 
+const HtmlRequestLimit = 3
+
 type NomenclatureService struct {
 	db            *sql.DB
 	updateService get.UpdateService
@@ -73,7 +75,7 @@ func (d *NomenclatureService) GetNomenclaturesWithLimitConcurrency(limit int, lo
 	log.Printf("Getting wildberries nomenclatures with limit: %d", limit)
 
 	data := sync.Map{}
-	limiter := rate.NewLimiter(rate.Limit(2), 2)
+	limiter := rate.NewLimiter(rate.Limit(HtmlRequestLimit), HtmlRequestLimit)
 	client := clients.NewGlobalIDsClient("http://localhost:8081")
 
 	globalIDs, err := client.FetchGlobalIDs()
@@ -227,32 +229,52 @@ func (d *NomenclatureService) UploadToDb(settings request.Settings, locale strin
 	if err != nil {
 		return updated, err
 	}
-	log.Printf("len (existIDs)=%d", len(existIDs))
 	client := clients.NewGlobalIDsClient("http://localhost:8081")
 
-	// Инициализируем мапу globalIDsMap
+	// Инициализируем мапу globalIDsFromDBMap
 	globalIDsFromDB, err := client.FetchGlobalIDs()
 	if err != nil {
 		log.Fatalf("Error fetching Global IDs: %s", err)
 	}
-	globalIDsMap := make(map[int]struct{}, len(globalIDsFromDB))
+	globalIDsFromDBMap := make(map[int]struct{}, len(globalIDsFromDB))
 	for _, globalID := range globalIDsFromDB {
-		globalIDsMap[globalID] = struct{}{}
+		globalIDsFromDBMap[globalID] = struct{}{}
 	}
-	log.Printf("len(db globalIDsMap)=%d", len(globalIDsMap))
 
 	var limit int
-	if settings.Cursor.Limit > len(globalIDsMap) {
-		limit = len(globalIDsMap)
+	if settings.Cursor.Limit > len(globalIDsFromDBMap) {
+		limit = len(globalIDsFromDBMap)
 	} else {
 		limit = settings.Cursor.Limit
 	}
 
-	itemsFromWB, err := d.GetNomenclaturesWithLimitConcurrency(limit, locale)
-	log.Printf("len(itemsFromWB)=%d", len(itemsFromWB))
-	log.Printf("%v", itemsFromWB[9574])
-	time.Sleep(100000 * time.Millisecond)
+	nmsFromWb, err := d.GetNomenclaturesWithLimitConcurrency(limit, locale)
+	var uploadPacket []interface{}
+	for id, nm := range nmsFromWb {
+		// есть ли такой товар в базе wholesaler.products
+		if _, ok := globalIDsFromDBMap[id]; !ok {
+			continue
+		}
+		if _, ok := existIDs[id]; ok {
+			continue
+		}
+		uploadPacket = append(uploadPacket, id, nm.NmID, nm.ImtID,
+			nm.NmUUID, nm.VendorCode, nm.SubjectID,
+			nm.Brand, nm.CreatedAt, nm.UpdatedAt)
+	}
 
+	log.Printf("Found (%d) new nomenclatures", len(uploadPacket))
+	if len(uploadPacket) > 0 {
+		err = d.insertBatchNomenclatures(uploadPacket)
+		if err != nil {
+			return -1, err
+		}
+		log.Printf("Successfully updates nomenclatures in db")
+	} else if len(uploadPacket) == 0 {
+		log.Printf("It looks like all the data is up to date")
+	}
+
+	log.SetPrefix("")
 	return updated, nil
 }
 

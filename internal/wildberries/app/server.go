@@ -61,30 +61,32 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	}
 	log.Println("WB migrations applied successfully!")
 
-	_, err = s.cardService.NomenclatureService.UploadToDb(request.Settings{
-		Sort:   request.Sort{Ascending: false},
-		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-		Cursor: request.Cursor{Limit: 10500},
-	}, "")
-	if err != nil {
-		log.Fatalf("Error getting Nomenclature count: %v", err)
-	}
+	//_, err = s.cardService.NomenclatureService.UploadToDb(request.Settings{
+	//	Sort:   request.Sort{Ascending: false},
+	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+	//	Cursor: request.Cursor{Limit: 10500},
+	//}, "")
+	//if err != nil {
+	//	log.Fatalf("Error getting Nomenclature count: %v", err)
+	//}
 
-	//res, err := s.cardService.NomenclatureService.GetNomenclaturesWithLimitConcurrency(108, "")
+	//res, err := s.cardService.NomenclatureService.GetNomenclaturesWithLimitConcurrently(108, "")
 	//if err != nil {
 	//	log.Fatalf("Error getting Nomenclature count: %v", err)
 	//}
 	//
 	//log.Printf("nomenclatures : %d", len(res))
 
-	//updateAppellations, err := s.cardService.UpdateCardNaming(request.Settings{
-	//	Sort:   request.Sort{Ascending: false},
-	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-	//	Cursor: request.Cursor{Limit: 1500},
-	//})
-	//
-	//if err != nil {
-	//	log.Fatalf("Error updating nomenclatures: %s\n", err)
-	//}
-	//log.Printf("\n\n\nUpdated %d nomenclatures\n", updateAppellations)
+	log.SetPrefix("Naming updater ")
+	updateAppellations, err := s.cardService.UpdateCardNaming(request.Settings{
+		Sort:   request.Sort{Ascending: false},
+		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+		Cursor: request.Cursor{Limit: 1500},
+	})
+	log.SetPrefix("")
+
+	if err != nil {
+		log.Fatalf("Error updating nomenclatures: %s\n", err)
+	}
+	log.Printf("\n\n\nUpdated %d nomenclatures\n", updateAppellations)
 }

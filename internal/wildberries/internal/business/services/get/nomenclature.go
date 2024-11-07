@@ -72,7 +72,7 @@ func (d *NomenclatureService) GetNomenclatures(settings request.Settings, locale
 	return &nomenclatureResponse, nil
 }
 
-func (d *NomenclatureService) GetNomenclaturesWithLimitConcurrency(limit int, locale string) (map[int]response.Nomenclature, error) {
+func (d *NomenclatureService) GetNomenclaturesWithLimitConcurrently(limit int, locale string) (map[int]response.Nomenclature, error) {
 	log.Printf("Getting wildberries nomenclatures with limit: %d", limit)
 
 	data := sync.Map{}
@@ -217,6 +217,140 @@ func (d *NomenclatureService) GetNomenclaturesWithLimitConcurrency(limit int, lo
 	return dataMap, nil
 }
 
+func (d *NomenclatureService) GetNomenclaturesWithLimitConcurrentlyPutIntoChanel(limit int, locale string, nomenclatureChan chan<- response.Nomenclature, responseLimiter *rate.Limiter) error {
+	log.Printf("Getting wildberries nomenclatures with limit: %d", limit)
+
+	client := clients.NewGlobalIDsClient("http://localhost:8081")
+
+	globalIDs, err := client.FetchGlobalIDs()
+	if err != nil {
+		log.Fatalf("Error fetching Global IDs: %s", err)
+	}
+	globalIDsMap := make(map[int]struct{}, len(globalIDs))
+	for _, globalID := range globalIDs {
+		globalIDsMap[globalID] = struct{}{}
+	}
+
+	cursor := request.Cursor{Limit: limit}
+	sort := request.Sort{}
+	filter := request.Filter{WithPhoto: -1}
+	packetSizes := divideLimitsToPackets(limit, 100)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	var activeGoroutines int
+	limitChan := make(chan int, len(packetSizes))
+	doneOnce := sync.Once{}
+	totalProcessed := 0 // Переменная для отслеживания общего количества добавленных элементов
+	log.Printf("Packet sizes: %v", packetSizes)
+
+	// Горутина для передачи данных в канал
+	for i := 0; i < len(packetSizes); i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			mu.Lock()
+			activeGoroutines++
+			mu.Unlock()
+			defer func() {
+				mu.Lock()
+				activeGoroutines--
+				if activeGoroutines == 0 {
+					log.Printf("It seems that we got all items.")
+					doneOnce.Do(func() { close(nomenclatureChan) })
+				}
+				mu.Unlock()
+			}()
+
+			for {
+				select {
+				case packetLimit, ok := <-limitChan:
+					if !ok {
+						log.Printf("Goroutine %d: limitChan closed", i)
+						return
+					}
+
+					if err := responseLimiter.Wait(context.Background()); err != nil {
+						log.Printf("Rate limiter error: %s", err)
+						return
+					}
+
+					for {
+						mu.Lock()
+						cursor.Limit = packetLimit
+						log.Printf("Goroutine %d: Fetching nomenclatures with packetLimit %d", i, packetLimit)
+						log.Printf("Cursor state before request: NmID=%d, UpdatedAt=%v", cursor.NmID, cursor.UpdatedAt)
+
+						var nomenclatureResponse *responses.NomenclatureResponse
+						var err error
+						retryCount := 0
+						maxRetries := 3
+						for retryCount < maxRetries {
+							nomenclatureResponse, err = d.GetNomenclatures(request.Settings{
+								Sort:   sort,
+								Filter: filter,
+								Cursor: cursor,
+							}, locale)
+							if err != nil && strings.Contains(err.Error(), "wsarecv: An established connection was aborted by the software in your host machine") {
+								retryCount++
+								log.Printf("Retrying to get nomenclatures due to connection error. Attempt: %d", retryCount)
+								time.Sleep(2 * time.Second) // Задержка перед повторной попыткой
+							} else {
+								break
+							}
+						}
+
+						if err != nil {
+							log.Printf("Failed to get nomenclatures: %s", err)
+							mu.Unlock()
+							return
+						}
+
+						numItems := len(nomenclatureResponse.Data)
+						if numItems == 0 {
+							log.Printf("No more data to process. Finishing this job ..")
+							mu.Unlock()
+							return
+						}
+
+						log.Printf("Goroutine %d has done the job! (lastNmID=%d, count=%d)", i, nomenclatureResponse.Data[len(nomenclatureResponse.Data)-1].NmID, numItems)
+						cursor.UpdatedAt = nomenclatureResponse.Data[len(nomenclatureResponse.Data)-1].UpdatedAt
+						cursor.NmID = nomenclatureResponse.Data[len(nomenclatureResponse.Data)-1].NmID
+						log.Printf("Cursor state after request: NmID=%d, UpdatedAt=%v", cursor.NmID, cursor.UpdatedAt)
+						totalProcessed += numItems // Увеличиваем общее количество обработанных товаров
+						mu.Unlock()
+
+						for _, nomenclature := range nomenclatureResponse.Data {
+							nomenclatureChan <- nomenclature
+						}
+
+						// Проверка: если общее количество обработанных товаров меньше лимита, то завершить обработку
+						if totalProcessed >= limit {
+							log.Printf("Total processed items (%d) have reached or exceeded the Limit (%d)", totalProcessed, limit)
+							return
+						}
+
+						if numItems < packetLimit {
+							log.Printf("Processed items (%d) are less than the packetLimit (%d), repeating request", numItems, packetLimit)
+							continue
+						}
+
+						break
+					}
+				}
+			}
+		}(i)
+	}
+
+	for _, limit := range packetSizes {
+		limitChan <- limit
+		log.Printf("Sent limit %d to limitChan", limit)
+	}
+	close(limitChan)
+	wg.Wait()
+
+	return nil
+}
+
 /*
 Возвращает число обновленных(добавленных) карточек
 */
@@ -249,7 +383,7 @@ func (d *NomenclatureService) UploadToDb(settings request.Settings, locale strin
 		limit = settings.Cursor.Limit
 	}
 
-	nmsFromWb, err := d.GetNomenclaturesWithLimitConcurrency(limit, locale)
+	nmsFromWb, err := d.GetNomenclaturesWithLimitConcurrently(limit, locale)
 	var uploadPacket []interface{}
 	for id, nm := range nmsFromWb {
 		// есть ли такой товар в базе wholesaler.products

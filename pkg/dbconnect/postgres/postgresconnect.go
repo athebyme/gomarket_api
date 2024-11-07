@@ -10,7 +10,7 @@ import (
 )
 
 const maxRetries = 10
-const dbMaxOpenConns = 10
+const dbMaxOpenConns = 20
 const retryDelay = 5 * time.Second
 
 func ConnectToPostgreSQL() (*sql.DB, error) {

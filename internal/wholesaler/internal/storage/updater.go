@@ -3,6 +3,7 @@ package storage
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/csv"
 	"errors"
@@ -126,11 +127,20 @@ func (pu *PostgresUpdater) fetchCSVData(renaming []string) ([][]string, error) {
 		filteredRows = append(filteredRows, filteredRow)
 	}
 
+	var str strings.Builder
+	str.WriteString("[|] ")
 	if renaming != nil {
 		for i, v := range renaming {
+			str.WriteString("[" + filteredRows[0][i] + "] renamed to [" + v + "]")
 			filteredRows[0][i] = v
+
+			if i < len(renaming)-1 {
+				str.WriteString(", ")
+			}
 		}
 	}
+	str.WriteString(" [|]")
+	log.Printf("Header renaming: %s", str.String())
 
 	return filteredRows, nil
 }
@@ -156,6 +166,7 @@ func indexOf(slice []string, str string) int {
 
 func (pu *PostgresUpdater) updateDatabase(csvData [][]string) error {
 	tx, err := pu.DB.Begin()
+	log.Printf("Update transasction began")
 	if err != nil {
 		return err
 	}
@@ -170,12 +181,14 @@ func (pu *PostgresUpdater) updateDatabase(csvData [][]string) error {
 	if err != nil {
 		return err
 	}
+	log.Printf("Created temp table %s", tempTableName)
 
 	// Prepare the COPY command to insert data into the temporary table
 	stmt, err := tx.Prepare(pq.CopyIn(tempTableName, pu.Columns...))
 	if err != nil {
 		return err
 	}
+	log.Printf("Prepared table Copy")
 
 	for _, row := range csvData[1:] {
 		_, err = stmt.Exec(convertRowToInterfaceSlice(row)...)
@@ -183,6 +196,7 @@ func (pu *PostgresUpdater) updateDatabase(csvData [][]string) error {
 			return err
 		}
 	}
+	log.Printf("Copied from %s to %s", pu.TableName, tempTableName)
 
 	_, err = stmt.Exec()
 	if err != nil {
@@ -196,20 +210,55 @@ func (pu *PostgresUpdater) updateDatabase(csvData [][]string) error {
 
 	// Insert data from the temporary table into the main table, checking for duplicates
 	insertQuery := fmt.Sprintf(`
-        INSERT INTO %s.%s (%s)
-        SELECT %s FROM %s
-        WHERE NOT EXISTS (
-            SELECT 1 FROM %s.%s WHERE %s.%s = %s.%s
-        )
-    `, pu.Schema, pu.TableName, strings.Join(pu.Columns, ","), strings.Join(pu.Columns, ","), tempTableName, pu.Schema, pu.TableName, pu.TableName, pu.Columns[0], tempTableName, pu.Columns[0])
+			INSERT INTO %s.%s (%s)
+			SELECT %s FROM %s AS temp
+			LEFT JOIN %s.%s AS main
+			ON temp.%s = main.%s
+			WHERE main.%s IS NULL
+		`,
+		pu.Schema, pu.TableName, strings.Join(pu.Columns, ","),
+		strings.Join(pu.ColumnsWithPrefix("temp."), ","),
+		tempTableName,
+		pu.Schema, pu.TableName,
+		pu.Columns[0], pu.Columns[0],
+		pu.Columns[0])
 
-	_, err = tx.Exec(insertQuery)
+	log.Printf("Insert query: %s", insertQuery)
+	startTime := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	_, err = tx.ExecContext(ctx, insertQuery)
+	log.Printf("Insert execution time: %v", time.Since(startTime))
 	if err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			log.Printf("Failed to update data due to timeout: %v", err)
+			return fmt.Errorf("update failed due to timeout: %w", err)
+		}
 		return err
 	}
 
 	// Commit the transaction
-	return tx.Commit()
+	log.Printf("Attempting to commit changes")
+	commitStartTime := time.Now()
+	if err = tx.Commit(); err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			log.Printf("Commit failed due to timeout: %v", err)
+			return fmt.Errorf("commit failed due to timeout: %w", err)
+		}
+		log.Printf("Error during commit: %v", err)
+		return err
+	}
+	log.Printf("Transaction committed successfully, execution time: %v", time.Since(commitStartTime))
+	return nil
+}
+
+func (pu *PostgresUpdater) ColumnsWithPrefix(prefix string) []string {
+	cols := make([]string, len(pu.Columns))
+	for i, col := range pu.Columns {
+		cols[i] = prefix + col
+	}
+	return cols
 }
 
 func convertRowToInterfaceSlice(row []string) []any {
@@ -248,14 +297,18 @@ func (pu *PostgresUpdater) Update(args ...[]string) error {
 			renamedCols = args[0]
 		}
 
+		log.SetPrefix("CSV DATA FETCHER ")
 		csvData, err := pu.fetchCSVData(renamedCols)
 		if err != nil {
 			return err
 		}
+		log.SetPrefix("")
 
+		log.SetPrefix("DATABASE UPDATER ")
 		if err := pu.updateDatabase(csvData); err != nil {
 			return err
 		}
+		log.SetPrefix("")
 
 		// Обновляем или вставляем время последнего обновления
 		_, err = pu.DB.Exec(`

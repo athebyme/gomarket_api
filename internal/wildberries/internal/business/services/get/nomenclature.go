@@ -21,19 +21,20 @@ import (
 
 const HtmlRequestLimit = 3
 
-// NomenclatureService -- сервис по работе с номенклатурами. get-update
-type NomenclatureService struct {
+// NomenclatureEngine -- сервис по работе с номенклатурами. get-update
+type NomenclatureEngine struct {
 	db            *sql.DB
 	updateService get.UpdateService
+	services.AuthEngine
 }
 
-func NewNomenclatureUpdateGetter(db *sql.DB, updateService get.UpdateService) *NomenclatureService {
-	return &NomenclatureService{db: db, updateService: updateService}
+func NewNomenclatureUpdateGetter(db *sql.DB, updateService get.UpdateService, auth services.AuthEngine) *NomenclatureEngine {
+	return &NomenclatureEngine{db: db, updateService: updateService, AuthEngine: auth}
 }
 
 const postNomenclature = "https://content-api.wildberries.ru/content/v2/get/cards/list"
 
-func (d *NomenclatureService) GetNomenclatures(settings request.Settings, locale string) (*responses.NomenclatureResponse, error) {
+func (d *NomenclatureEngine) GetNomenclatures(settings request.Settings, locale string) (*responses.NomenclatureResponse, error) {
 	url := postNomenclature
 	if locale != "" {
 		url = fmt.Sprintf("%s?locale=%s", url, locale)
@@ -51,7 +52,7 @@ func (d *NomenclatureService) GetNomenclatures(settings request.Settings, locale
 		return nil, err
 	}
 
-	services.SetAuthorizationHeader(req)
+	d.SetApiKey(req)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := client.Do(req)
@@ -72,8 +73,18 @@ func (d *NomenclatureService) GetNomenclatures(settings request.Settings, locale
 	return &nomenclatureResponse, nil
 }
 
-func (d *NomenclatureService) GetNomenclaturesWithLimitConcurrently(limit int, locale string) (map[int]response.Nomenclature, error) {
+func (d *NomenclatureEngine) GetNomenclaturesWithLimitConcurrently(limit int, locale string) (map[int]response.Nomenclature, error) {
 	log.Printf("Getting wildberries nomenclatures with limit: %d", limit)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	var activeGoroutines int
+	packetSizes := divideLimitsToPackets(limit, 100)
+	log.Printf("Packet sizes: %v", packetSizes)
+	limitChan := make(chan int, len(packetSizes))
+	dataChan := make(chan response.Nomenclature)
+	doneOnce := sync.Once{}
+	totalProcessed := 0 // Переменная для отслеживания общего количества добавленных элементов
+	totalErrors := 0
 
 	data := sync.Map{}
 	limiter := rate.NewLimiter(rate.Limit(HtmlRequestLimit), HtmlRequestLimit)
@@ -91,16 +102,6 @@ func (d *NomenclatureService) GetNomenclaturesWithLimitConcurrently(limit int, l
 	cursor := request.Cursor{Limit: limit}
 	sort := request.Sort{}
 	filter := request.Filter{WithPhoto: -1}
-	packetSizes := divideLimitsToPackets(limit, 100)
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	var activeGoroutines int
-	limitChan := make(chan int, len(packetSizes))
-	dataChan := make(chan response.Nomenclature)
-	doneOnce := sync.Once{}
-	totalProcessed := 0 // Переменная для отслеживания общего количества добавленных элементов
-	totalErrors := 0
-	log.Printf("Packet sizes: %v", packetSizes)
 
 	// Горутина для сбора данных из dataChan в data map
 	wg.Add(1)
@@ -217,7 +218,9 @@ func (d *NomenclatureService) GetNomenclaturesWithLimitConcurrently(limit int, l
 	return dataMap, nil
 }
 
-func (d *NomenclatureService) GetNomenclaturesWithLimitConcurrentlyPutIntoChanel(limit int, locale string, nomenclatureChan chan<- response.Nomenclature, responseLimiter *rate.Limiter) error {
+func (d *NomenclatureEngine) GetNomenclaturesWithLimitConcurrentlyPutIntoChanel(settings request.Settings, locale string, nomenclatureChan chan<- response.Nomenclature, responseLimiter *rate.Limiter) error {
+	limit := settings.Cursor.Limit
+
 	log.Printf("Getting wildberries nomenclatures with limit: %d", limit)
 
 	client := clients.NewGlobalIDsClient("http://localhost:8081")
@@ -232,8 +235,6 @@ func (d *NomenclatureService) GetNomenclaturesWithLimitConcurrentlyPutIntoChanel
 	}
 
 	cursor := request.Cursor{Limit: limit}
-	sort := request.Sort{}
-	filter := request.Filter{WithPhoto: -1}
 	packetSizes := divideLimitsToPackets(limit, 100)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -281,15 +282,13 @@ func (d *NomenclatureService) GetNomenclaturesWithLimitConcurrentlyPutIntoChanel
 						log.Printf("Cursor state before request: NmID=%d, UpdatedAt=%v", cursor.NmID, cursor.UpdatedAt)
 
 						var nomenclatureResponse *responses.NomenclatureResponse
+						goroutineSettingsRequest := settings
+						goroutineSettingsRequest.Cursor = cursor
 						var err error
 						retryCount := 0
 						maxRetries := 3
 						for retryCount < maxRetries {
-							nomenclatureResponse, err = d.GetNomenclatures(request.Settings{
-								Sort:   sort,
-								Filter: filter,
-								Cursor: cursor,
-							}, locale)
+							nomenclatureResponse, err = d.GetNomenclatures(goroutineSettingsRequest, locale)
 							if err != nil && strings.Contains(err.Error(), "wsarecv: An established connection was aborted by the software in your host machine") {
 								retryCount++
 								log.Printf("Retrying to get nomenclatures due to connection error. Attempt: %d", retryCount)
@@ -354,7 +353,7 @@ func (d *NomenclatureService) GetNomenclaturesWithLimitConcurrentlyPutIntoChanel
 /*
 Возвращает число обновленных(добавленных) карточек
 */
-func (d *NomenclatureService) UploadToDb(settings request.Settings, locale string) (int, error) {
+func (d *NomenclatureEngine) UploadToDb(settings request.Settings, locale string) (int, error) {
 	log.Printf("Updating wildberries.nomenclatures")
 	log.SetPrefix("NM UPDATER | ")
 	updated := 0
@@ -413,7 +412,7 @@ func (d *NomenclatureService) UploadToDb(settings request.Settings, locale strin
 	return updated, nil
 }
 
-func (d *NomenclatureService) insertBatchNomenclatures(batch []interface{}) error {
+func (d *NomenclatureEngine) insertBatchNomenclatures(batch []interface{}) error {
 	query := `
 		INSERT INTO wildberries.nomenclatures (global_id, nm_id, imt_id, nm_uuid, vendor_code, subject_id, wb_brand, created_at, updated_at)
 		VALUES `
@@ -446,7 +445,7 @@ func (d *NomenclatureService) insertBatchNomenclatures(batch []interface{}) erro
 	return err
 }
 
-func (d *NomenclatureService) GetDBNomenclatures() (map[int]struct{}, error) {
+func (d *NomenclatureEngine) GetDBNomenclatures() (map[int]struct{}, error) {
 	// запрос для получения списка category_id
 	query := `SELECT global_id FROM wildberries.nomenclatures`
 
@@ -475,7 +474,7 @@ func (d *NomenclatureService) GetDBNomenclatures() (map[int]struct{}, error) {
 	return nmIDs, nil
 }
 
-func (d *NomenclatureService) initializeCard(nomenclature response.Nomenclature) error {
+func (d *NomenclatureEngine) initializeCard(nomenclature response.Nomenclature) error {
 	dataJson, err := json.Marshal(nomenclature)
 	if err != nil {
 		return err

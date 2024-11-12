@@ -15,6 +15,7 @@ func NewProductCardBuilder() *ProductCardBuilder {
 		card:         &get.WildberriesCard{},
 		nomenclature: &response.Nomenclature{}}
 }
+
 func (b *ProductCardBuilder) WithNmID(nmID int) *ProductCardBuilder {
 	b.card.NmID = nmID
 	return b
@@ -44,7 +45,7 @@ func (b *ProductCardBuilder) WithNomenclature(n response.Nomenclature) *ProductC
 	b.nomenclature = &n
 	return b
 }
-func (b *ProductCardBuilder) CardInfoFromNomenclature() *ProductCardBuilder {
+func (b *ProductCardBuilder) FromNomenclature() *ProductCardBuilder {
 	if b.nomenclature == nil {
 		return b
 	}

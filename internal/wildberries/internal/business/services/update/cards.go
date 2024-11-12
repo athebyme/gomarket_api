@@ -13,23 +13,29 @@ import (
 	"gomarketplace_api/internal/wildberries/internal/business/services/get"
 	clients2 "gomarketplace_api/internal/wildberries/pkg/clients"
 	"gomarketplace_api/pkg/business/service"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 type CardUpdater struct {
-	NomenclatureService get.NomenclatureService
+	NomenclatureService get.NomenclatureEngine
 	wsclient            *clients2.WServiceClient
 	textService         service.ITextService
+	services.AuthEngine
 }
 
-func NewCardUpdater(nservice *get.NomenclatureService, textService service.ITextService, wsClientUrl string) *CardUpdater {
+func NewCardUpdater(nservice *get.NomenclatureEngine, textService service.ITextService, wsClientUrl string, auth services.AuthEngine) *CardUpdater {
 	return &CardUpdater{
 		NomenclatureService: *nservice,
 		wsclient:            clients2.NewWServiceClient(wsClientUrl),
 		textService:         textService,
+		AuthEngine:          auth,
 	}
 }
 
@@ -38,45 +44,55 @@ const updateCardsUrl = "https://content-api.wildberries.ru/content/v2/cards/upda
 func UpdateCards() (int, error) {
 	panic("TO DO")
 }
-func (u *CardUpdater) UpdateCardNaming(settings request.Settings) (int, error) {
-	const UPLOAD_SIZE = 300
+func (cu *CardUpdater) UpdateCardNaming(settings request.Settings) (int, error) {
+	const UPLOAD_SIZE = 100
 	const MaxBatchSize = 1 << 20 // 1 MB
 	const GOROUTINE_COUNT = 5
 	const REQUEST_RATE_LIMIT = 50 // 100 запросов в минуту = max
-	const UPLOAD_RATE_LIMIT = 5
+	const UPLOAD_RATE_LIMIT = 10
 	var updatedCount = 0
 	var currentBatch []models.WildberriesCard
 	var currentBatchSize int
 	var gotData []response.Nomenclature
+	var goroutinesNmsCount atomic.Int32
 
 	log.Println("Fetching appellations...")
-	appellationsMap, err := u.wsclient.FetchAppellations()
+	appellationsMap, err := cu.wsclient.FetchAppellations()
 	if err != nil {
 		return 0, fmt.Errorf("error fetching appellations: %w", err)
 	}
 
 	log.Println("Fetching descriptions...")
-	descriptionsMap, err := u.wsclient.FetchDescriptions()
+	descriptionsMap, err := cu.wsclient.FetchDescriptions()
 	if err != nil {
 		return 0, fmt.Errorf("error fetching descriptions: %w", err)
 	}
 
-	var wg sync.WaitGroup
+	var processWg sync.WaitGroup
 	var mu sync.Mutex
 	var processedItems sync.Map
 	nomenclatureChan := make(chan response.Nomenclature)
 	uploadChan := make(chan []models.WildberriesCard) // Канал для отправки данных
 
 	responseLimiter := rate.NewLimiter(rate.Every(time.Minute/REQUEST_RATE_LIMIT), REQUEST_RATE_LIMIT)
-	uploadToServerLimiter := rate.NewLimiter(rate.Every(time.Minute/UPLOAD_RATE_LIMIT), REQUEST_RATE_LIMIT)
+	uploadToServerLimiter := rate.NewLimiter(rate.Every(time.Minute/UPLOAD_RATE_LIMIT), UPLOAD_RATE_LIMIT)
+
+	log.Println("Fetching and sending nomenclatures to the channel...")
+	go func() {
+		if err := cu.NomenclatureService.GetNomenclaturesWithLimitConcurrentlyPutIntoChanel(settings, "", nomenclatureChan, responseLimiter); err != nil {
+			log.Printf("Error fetching nomenclatures concurrently: %s", err)
+		}
+	}()
 
 	// Запуск горутин для обработки номенклатур
 	log.Println("Starting goroutines for processing nomenclatures...")
 	for i := 0; i < GOROUTINE_COUNT; i++ {
-		wg.Add(1)
+		processWg.Add(1)
 		go func(i int) {
-			defer wg.Done()
+			defer processWg.Done()
 			for nomenclature := range nomenclatureChan {
+				goroutinesNmsCount.Add(1)
+
 				var wbCard models.WildberriesCard
 				wbCard = *wbCard.FromNomenclature(nomenclature)
 				_, loaded := processedItems.LoadOrStore(wbCard.VendorCode, true)
@@ -94,12 +110,14 @@ func (u *CardUpdater) UpdateCardNaming(settings request.Settings) (int, error) {
 					continue
 				}
 
-				wbCard.Title = u.textService.ClearAndReduce(appellationsMap[globalId], 60)
-				wbCard.Title = u.textService.ReplaceEngLettersToRus(wbCard.Title)
+				wbCard.Title = cu.textService.ClearAndReduce(appellationsMap[globalId], 60)
+				changedBrand := cu.textService.ReplaceEngLettersToRus(" " + wbCard.Brand)
+				wbCard.Title = cu.textService.FitIfPossible(wbCard.Title, changedBrand, 60)
+
 				if description, ok := descriptionsMap[globalId]; ok && description != "" {
-					wbCard.Description = u.textService.ClearAndReduce(description, 2000)
+					wbCard.Description = cu.textService.ClearAndReduce(description, 2000)
 				} else {
-					wbCard.Description = u.textService.ClearAndReduce(appellationsMap[globalId], 2000)
+					wbCard.Description = cu.textService.ClearAndReduce(appellationsMap[globalId], 2000)
 				}
 
 				mu.Lock()
@@ -118,10 +136,7 @@ func (u *CardUpdater) UpdateCardNaming(settings request.Settings) (int, error) {
 	}
 
 	// Горутин для отправки данных
-	var uploadWg sync.WaitGroup
-	uploadWg.Add(1)
 	go func() {
-		defer uploadWg.Done()
 		for batch := range uploadChan {
 			log.Println("Uploading batch of cards...")
 			// Лимитирование запросов на загрузку
@@ -130,7 +145,7 @@ func (u *CardUpdater) UpdateCardNaming(settings request.Settings) (int, error) {
 				return
 			}
 
-			cards, err := uploadCards(batch)
+			cards, err := cu.processAndUploadCards(batch)
 			if err != nil {
 				log.Printf("Error during uploading %s", err)
 				return
@@ -139,16 +154,10 @@ func (u *CardUpdater) UpdateCardNaming(settings request.Settings) (int, error) {
 		}
 	}()
 
-	// Получение номенклатур конкурентно
-	log.Println("Fetching and sending nomenclatures to the channel...")
 	go func() {
-		if err := u.NomenclatureService.GetNomenclaturesWithLimitConcurrentlyPutIntoChanel(settings.Cursor.Limit, "", nomenclatureChan, responseLimiter); err != nil {
-			log.Printf("Error fetching nomenclatures concurrently: %s", err)
-		}
-		close(nomenclatureChan)
-		wg.Wait()
+		processWg.Wait()
 
-		// Обработка оставшихся данных
+		// Process remaining data
 		log.Println("Processing any remaining data...")
 		mu.Lock()
 		if len(currentBatch) > 0 {
@@ -160,51 +169,103 @@ func (u *CardUpdater) UpdateCardNaming(settings request.Settings) (int, error) {
 		close(uploadChan)
 	}()
 
-	uploadWg.Wait()
-
+	log.Printf("Goroutines fetchers got (%d) nomenclautres", goroutinesNmsCount.Load())
 	log.Printf("Update completed, total updated count: %d", updatedCount)
 	return updatedCount, nil
 
 }
 
-func uploadCards(cards []models.WildberriesCard) (int, error) {
+func (cu *CardUpdater) processAndUploadCards(cards []models.WildberriesCard) (int, error) {
+	bodyBytes, statusCode, err := cu.uploadCards(cards)
+	if err != nil {
+		if statusCode != http.StatusOK && bodyBytes != nil {
+			var errorResponse map[string]interface{}
+			log.Printf("Trying to fix (Status=%d)...", statusCode)
+			if err := json.Unmarshal(bodyBytes, &errorResponse); err == nil {
+				if additionalErrors, ok := errorResponse["additionalErrors"].(map[string]interface{}); ok {
+					if bannedArticles, ok := additionalErrors["Забаненные артикулы WB"].(string); ok {
+						bannedArticlesSlice := strings.Split(bannedArticles, ", ")
+						filteredCards := filterOutBannedArticles(cards, bannedArticlesSlice)
+						if len(filteredCards) > 0 {
+							return cu.processAndUploadCards(filteredCards)
+						}
+					}
+				}
+			}
+		}
+		return 0, fmt.Errorf("update failed: %w", err)
+	}
+
+	return len(cards), nil
+}
+
+func (cu *CardUpdater) uploadCards(cards []models.WildberriesCard) ([]byte, int, error) {
 	log.Printf("Sending updated card to Wildberries...")
 	requestBody, err := json.Marshal(cards)
 	if err != nil {
-		return 0, fmt.Errorf("failed to marshal update request: %w", err)
+		return nil, 500, fmt.Errorf("failed to marshal update request: %w", err)
 	}
 
 	var jsonCheck []map[string]interface{}
 	if err := json.Unmarshal(requestBody, &jsonCheck); err != nil {
 		log.Printf("Invalid JSON: %v", err)
-		return 0, fmt.Errorf("invalid JSON: %w", err)
+		return nil, 500, fmt.Errorf("invalid JSON: %w", err)
 	}
 
 	req, err := http.NewRequest("POST", updateCardsUrl, bytes.NewBuffer(requestBody))
 	if err != nil {
-		return 0, fmt.Errorf("failed to create update request: %w", err)
+		return nil, 500, fmt.Errorf("failed to create update request: %w", err)
 	}
 
-	requestBodySize := len(requestBody) // Перевод размера в мегабайты
+	requestBodySize := len(requestBody)
 	requestBodySizeMB := float64(requestBodySize) / (1 << 20)
 	log.Printf("Request Body Size: %d bytes (%.2f MB)\n", requestBodySize, requestBodySizeMB)
 
 	req.Header.Set("Content-Type", "application/json")
-	services.SetAuthorizationHeader(req)
+	cu.SetApiKey(req)
 
 	log.Printf("Sending requestbody: %v", string(requestBody))
 	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("failed to update cards: %w", err)
+		return nil, 500, fmt.Errorf("failed to update cards: %w", err)
 	}
 	defer resp.Body.Close()
 
+	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, resp.StatusCode, fmt.Errorf("failed to read error response: %w", err)
+	}
 	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("update failed with status: %d", resp.StatusCode)
+		var errorResponse map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &errorResponse); err != nil {
+			return nil, resp.StatusCode, fmt.Errorf("failed to unmarshal error response: %w", err)
+		}
+
+		errorDetails, err := json.MarshalIndent(errorResponse, "", "  ")
+		if err != nil {
+			return nil, resp.StatusCode, fmt.Errorf("failed to format error details: %w", err)
+		}
+
+		log.Printf("Update failed with status: %d, error details: %s", resp.StatusCode, string(errorDetails))
+		return bodyBytes, resp.StatusCode, fmt.Errorf("update failed with status: %d", resp.StatusCode)
 	}
 
 	// Обновление истории карт
+	return bodyBytes, resp.StatusCode, nil
+}
 
-	return len(cards), nil
+func filterOutBannedArticles(cards []models.WildberriesCard, bannedArticles []string) []models.WildberriesCard {
+	var filteredCards []models.WildberriesCard
+	bannedSet := make(map[string]struct{}, len(bannedArticles))
+	for _, article := range bannedArticles {
+		bannedSet[article] = struct{}{}
+	}
+
+	for _, card := range cards {
+		if _, isBanned := bannedSet[strconv.Itoa(card.NmID)]; !isBanned {
+			filteredCards = append(filteredCards, card)
+		}
+	}
+	return filteredCards
 }

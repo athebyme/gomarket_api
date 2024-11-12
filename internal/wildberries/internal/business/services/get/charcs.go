@@ -16,7 +16,17 @@ import (
 
 const characteristicsURL = "https://content-api.wildberries.ru/content/v2/object/charcs/%d"
 
-func GetItemCharcs(subjectID int, locale string) (*responses.CharacteristicsResponse, error) {
+type CharacteristicsEngine struct {
+	services.AuthEngine
+}
+
+func NewCharacteristicService(auth services.AuthEngine) *CharacteristicsEngine {
+	return &CharacteristicsEngine{
+		auth,
+	}
+}
+
+func (s *CharacteristicsEngine) GetItemCharcs(subjectID int, locale string) (*responses.CharacteristicsResponse, error) {
 	url := fmt.Sprintf(characteristicsURL, subjectID)
 	if locale != "" {
 		url = fmt.Sprintf("%s?locale=%s", url, locale)
@@ -29,7 +39,7 @@ func GetItemCharcs(subjectID int, locale string) (*responses.CharacteristicsResp
 		return nil, err
 	}
 
-	services.SetAuthorizationHeader(req)
+	s.SetApiKey(req)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -51,10 +61,11 @@ func GetItemCharcs(subjectID int, locale string) (*responses.CharacteristicsResp
 
 type UpdateDBCharcs struct {
 	db *sql.DB
+	CharacteristicsEngine
 }
 
-func NewUpdateDBCharcs(db *sql.DB) *UpdateDBCharcs {
-	return &UpdateDBCharcs{db: db}
+func NewUpdateDBCharcs(db *sql.DB, service CharacteristicsEngine) *UpdateDBCharcs {
+	return &UpdateDBCharcs{db: db, CharacteristicsEngine: service}
 }
 
 func (d *UpdateDBCharcs) UpdateDBCharcs(subjectIDs []int) (int, error) {
@@ -74,7 +85,7 @@ func (d *UpdateDBCharcs) UpdateDBCharcs(subjectIDs []int) (int, error) {
 		if err := limiter.Wait(context.Background()); err != nil {
 			return -1, err
 		}
-		response, err := GetItemCharcs(subjectID, "")
+		response, err := d.GetItemCharcs(subjectID, "")
 		if err != nil {
 			return -1, err
 		}

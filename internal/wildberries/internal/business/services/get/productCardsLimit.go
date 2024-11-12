@@ -11,7 +11,15 @@ import (
 
 const productCardsLimitUrl = "https://content-api.wildberries.ru/content/v2/cards/limits"
 
-func GetProductCardsLimit() (*responses.ProductCardsLimitResponse, error) {
+type ProductCardsLimitEngine struct {
+	services.AuthEngine
+}
+
+func NewProductCardsLimitEngine(auth services.AuthEngine) *ProductCardsLimitEngine {
+	return &ProductCardsLimitEngine{auth}
+}
+
+func (pcl *ProductCardsLimitEngine) GetProductCardsLimit() (*responses.ProductCardsLimitResponse, error) {
 	url := productCardsLimitUrl
 
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -21,7 +29,7 @@ func GetProductCardsLimit() (*responses.ProductCardsLimitResponse, error) {
 		return nil, err
 	}
 
-	services.SetAuthorizationHeader(req)
+	pcl.SetApiKey(req)
 
 	resp, err := client.Do(req)
 	if err != nil {

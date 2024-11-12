@@ -12,10 +12,20 @@ import (
 	"time"
 )
 
+type CategoriesEngine struct {
+	services.AuthEngine
+}
+
+func NewCategoriesService(auth services.AuthEngine) *CategoriesEngine {
+	return &CategoriesEngine{
+		auth,
+	}
+}
+
 const categoriesUrl = "https://content-api.wildberries.ru/content/v2/object/all"
 
 // GetCategories запрашивает категории с указанными параметрами: имя, локаль, лимит, смещение и идентификатор родителя.
-func GetCategories(name, locale string, limit, offset, parentID int) (*responses.CategoryResponse, error) {
+func (s *CategoriesEngine) GetCategories(name, locale string, limit, offset, parentID int) (*responses.CategoryResponse, error) {
 	// Формируем URL с параметрами
 	url, err := buildCategoriesURL(locale, limit, offset, parentID)
 	if err != nil {
@@ -32,7 +42,7 @@ func GetCategories(name, locale string, limit, offset, parentID int) (*responses
 	}
 
 	// Устанавливаем заголовок авторизации
-	services.SetAuthorizationHeader(req)
+	s.SetApiKey(req)
 
 	// Отправляем запрос
 	resp, err := client.Do(req)

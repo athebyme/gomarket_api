@@ -11,7 +11,15 @@ import (
 
 const colorsUrl = "https://content-api.wildberries.ru/content/v2/directory/colors"
 
-func GetColors(locale string) (*responses.ColorResponse, error) {
+type ColorEngine struct {
+	services.AuthEngine
+}
+
+func NewColorEngine(auth services.AuthEngine) *ColorEngine {
+	return &ColorEngine{auth}
+}
+
+func (ce *ColorEngine) GetColors(locale string) (*responses.ColorResponse, error) {
 	url := colorsUrl
 	if locale != "" {
 		url = fmt.Sprintf("%s?locale=%s", url, locale)
@@ -24,7 +32,7 @@ func GetColors(locale string) (*responses.ColorResponse, error) {
 		return nil, err
 	}
 
-	services.SetAuthorizationHeader(req)
+	ce.SetApiKey(req)
 
 	resp, err := client.Do(req)
 	if err != nil {

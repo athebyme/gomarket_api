@@ -11,7 +11,15 @@ import (
 
 const wildberriesPingURL = "https://common-api.wildberries.ru/ping"
 
-func Ping() (*responses.Ping, error) {
+type PingEngine struct {
+	services.AuthEngine
+}
+
+func NewPingEngine(auth services.AuthEngine) *PingEngine {
+	return &PingEngine{auth}
+}
+
+func (pe *PingEngine) Ping() (*responses.Ping, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 
 	req, err := http.NewRequest("GET", wildberriesPingURL, nil)
@@ -19,7 +27,7 @@ func Ping() (*responses.Ping, error) {
 		return nil, err
 	}
 
-	services.SetAuthorizationHeader(req)
+	pe.SetApiKey(req)
 
 	resp, err := client.Do(req)
 	if err != nil {

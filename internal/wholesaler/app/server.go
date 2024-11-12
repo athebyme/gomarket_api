@@ -1,27 +1,25 @@
 package app
 
 import (
-	"database/sql"
 	"encoding/json"
-	"fmt"
-	"gomarketplace_api/config"
 	"gomarketplace_api/internal/wholesaler/internal/business"
 	"gomarketplace_api/internal/wholesaler/internal/storage"
+	"gomarketplace_api/pkg/dbconnect"
 	"gomarketplace_api/pkg/dbconnect/migration"
-	"gomarketplace_api/pkg/dbconnect/postgres"
 	"log"
 	"net/http"
 )
 
 type WholesalerServer struct {
+	dbconnect.DbConnector
 }
 
-func NewWServer() *WholesalerServer {
-	return &WholesalerServer{}
+func NewWServer(dbCon dbconnect.DbConnector) *WholesalerServer {
+	return &WholesalerServer{dbCon}
 }
 
 func (s *WholesalerServer) Run(wg *chan struct{}) {
-	var db, err = postgres.ConnectToPostgreSQL()
+	var db, err = s.Connect()
 	if err != nil {
 		log.Printf("Error connecting to PostgreSQL: %s\n", err)
 	}
@@ -136,12 +134,16 @@ func (s *WholesalerServer) Run(wg *chan struct{}) {
 	*wg <- struct{}{}
 }
 
-func getGlobalIDsHandler(w http.ResponseWriter, r *http.Request) {
-	cfg := config.GetConfig()
-	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName)
+type AppHandler struct {
+	dbconnect.DbConnector
+}
 
-	db, err := sql.Open("postgres", connStr)
+func NewAppHandler(connector dbconnect.DbConnector) *AppHandler {
+	return &AppHandler{connector}
+}
+
+func (h *AppHandler) GetGlobalIDsHandler(w http.ResponseWriter, r *http.Request) {
+	db, err := h.Connect()
 	if err != nil {
 		return
 	}
@@ -184,13 +186,8 @@ func getGlobalIDsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getAppellationHandler(w http.ResponseWriter, r *http.Request) {
-
-	cfg := config.GetConfig()
-	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName)
-
-	db, err := sql.Open("postgres", connStr)
+func (h *AppHandler) GetAppellationHandler(w http.ResponseWriter, r *http.Request) {
+	db, err := h.Connect()
 	if err != nil {
 		return
 	}
@@ -234,12 +231,8 @@ func getAppellationHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getDescriptionsHandler(w http.ResponseWriter, r *http.Request) {
-	cfg := config.GetConfig()
-	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName)
-
-	db, err := sql.Open("postgres", connStr)
+func (h *AppHandler) GetDescriptionsHandler(w http.ResponseWriter, r *http.Request) {
+	db, err := h.Connect()
 	if err != nil {
 		return
 	}
@@ -283,10 +276,10 @@ func getDescriptionsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func SetupRoutes() {
-	http.HandleFunc("/api/globalids", getGlobalIDsHandler)
-	http.HandleFunc("/api/appellations", getAppellationHandler)
-	http.HandleFunc("/api/descriptions", getDescriptionsHandler)
+func SetupRoutes(handler *AppHandler) {
+	http.HandleFunc("/api/globalids", handler.GetGlobalIDsHandler)
+	http.HandleFunc("/api/appellations", handler.GetAppellationHandler)
+	http.HandleFunc("/api/descriptions", handler.GetDescriptionsHandler)
 	log.Printf("Запущен сервис /api/globalids")
 	log.Fatal(http.ListenAndServe(":8081", nil))
 }

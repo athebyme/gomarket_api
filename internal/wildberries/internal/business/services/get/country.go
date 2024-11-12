@@ -11,7 +11,15 @@ import (
 
 const countryUrl = "https://content-api.wildberries.ru/content/v2/directory/countries"
 
-func GetCountries(locale string) (*responses.CountryResponse, error) {
+type CountriesEngine struct {
+	services.AuthEngine
+}
+
+func NewCountriesEngine(auth services.AuthEngine) *CountriesEngine {
+	return &CountriesEngine{auth}
+}
+
+func (ce *CountriesEngine) GetCountries(locale string) (*responses.CountryResponse, error) {
 	url := countryUrl
 	if locale != "" {
 		url = fmt.Sprintf("%s?locale=%s", url, locale)
@@ -24,7 +32,7 @@ func GetCountries(locale string) (*responses.CountryResponse, error) {
 		return nil, err
 	}
 
-	services.SetAuthorizationHeader(req)
+	ce.SetApiKey(req)
 
 	resp, err := client.Do(req)
 	if err != nil {

@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"database/sql"
-	"fmt"
 	_ "github.com/lib/pq"
 	"gomarketplace_api/config"
 	"log"
@@ -13,14 +12,19 @@ const maxRetries = 10
 const dbMaxOpenConns = 20
 const retryDelay = 5 * time.Second
 
-func ConnectToPostgreSQL() (*sql.DB, error) {
-	dbConfig := config.GetConfig()
+type PgConnector struct {
+	config.DbConfig
+}
 
-	conStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		dbConfig.Host, dbConfig.Port, dbConfig.User, dbConfig.Password, dbConfig.DBName)
+func NewPgConnector(dbConfig config.DbConfig) *PgConnector {
+	return &PgConnector{dbConfig}
+}
 
+func (pg *PgConnector) Connect() (*sql.DB, error) {
 	var db *sql.DB
 	var err error
+	conStr := pg.GetConnectionString()
+
 	for i := 0; i < maxRetries; i++ {
 		db, err = sql.Open("postgres", conStr)
 		if err != nil {

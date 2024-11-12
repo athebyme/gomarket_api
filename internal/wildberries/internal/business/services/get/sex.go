@@ -11,7 +11,15 @@ import (
 
 const sexUrl = "https://content-api.wildberries.ru/content/v2/directory/kinds"
 
-func GetSex(locale string) (*responses.SexResponse, error) {
+type SexEngine struct {
+	services.AuthEngine
+}
+
+func NewSexEngine(auth services.AuthEngine) *SexEngine {
+	return &SexEngine{auth}
+}
+
+func (se *SexEngine) GetSex(locale string) (*responses.SexResponse, error) {
 	url := sexUrl
 	if locale != "" {
 		url = fmt.Sprintf("%s?locale=%s", url, locale)
@@ -24,7 +32,7 @@ func GetSex(locale string) (*responses.SexResponse, error) {
 		return nil, err
 	}
 
-	services.SetAuthorizationHeader(req)
+	se.SetApiKey(req)
 
 	resp, err := client.Do(req)
 	if err != nil {

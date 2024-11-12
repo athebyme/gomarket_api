@@ -214,14 +214,14 @@ func (pu *PostgresUpdater) updateDatabase(csvData [][]string) error {
 			SELECT %s FROM %s AS temp
 			LEFT JOIN %s.%s AS main
 			ON temp.%s = main.%s
-			WHERE main.%s IS NULL
+			WHERE main.%s IS NULL AND temp.%s IS NOT NULL
 		`,
 		pu.Schema, pu.TableName, strings.Join(pu.Columns, ","),
 		strings.Join(pu.ColumnsWithPrefix("temp."), ","),
 		tempTableName,
 		pu.Schema, pu.TableName,
 		pu.Columns[0], pu.Columns[0],
-		pu.Columns[0])
+		pu.Columns[0], pu.Columns[1]) // Проверка на NOT NULL для второго столбца
 
 	log.Printf("Insert query: %s", insertQuery)
 	startTime := time.Now()

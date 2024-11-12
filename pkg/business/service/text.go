@@ -14,6 +14,7 @@ type ITextService interface {
 	RemoveAllTags(input string) string
 	ReduceToLength(input string, length int) string
 	ClearAndReduce(input string, length int) string
+	FitIfPossible(input string, fit string, length int) string
 	RemoveLinks(input string) string
 	SmartReduceToLength(input string, length int) string
 	RemoveUnimportantSymbols(input string) string
@@ -21,6 +22,7 @@ type ITextService interface {
 	RemoveWord(input string, word string) string
 	ReplaceSymbols(input string, replace map[string]string) string
 	AddWordIfNotExistsToFront(input string, word string) string
+	AddWordIfNotExistsToEnd(input string, word string) string
 	ValidateUTF8Word(word string) string
 }
 
@@ -38,6 +40,106 @@ var engRusMap = map[string]string{
 	"X": "Х",
 	"O": "О",
 	"H": "Н",
+}
+
+var prepositions = map[string]struct{}{
+	"в":              {},
+	"без":            {},
+	"до":             {},
+	"из":             {},
+	"к":              {},
+	"на":             {},
+	"по":             {},
+	"о":              {},
+	"от":             {},
+	"перед":          {},
+	"при":            {},
+	"про":            {},
+	"с":              {},
+	"у":              {},
+	"за":             {},
+	"над":            {},
+	"об":             {},
+	"под":            {},
+	"для":            {},
+	"через":          {},
+	"между":          {},
+	"благодаря":      {},
+	"вместо":         {},
+	"внутри":         {},
+	"вокруг":         {},
+	"вопреки":        {},
+	"впереди":        {},
+	"вплоть":         {},
+	"вслед":          {},
+	"вследствие":     {},
+	"накануне":       {},
+	"насчёт":         {},
+	"невзирая":       {},
+	"сверх":          {},
+	"среди":          {},
+	"сквозь":         {},
+	"посредством":    {},
+	"ради":           {},
+	"ввиду":          {},
+	"взамен":         {},
+	"исключая":       {},
+	"помимо":         {},
+	"посередине":     {},
+	"при помощи":     {},
+	"с учётом":       {},
+	"со стороны":     {},
+	"по отношению к": {},
+	"about":          {},
+	"above":          {},
+	"across":         {},
+	"after":          {},
+	"against":        {},
+	"along":          {},
+	"among":          {},
+	"around":         {},
+	"at":             {},
+	"before":         {},
+	"behind":         {},
+	"below":          {},
+	"beneath":        {},
+	"beside":         {},
+	"between":        {},
+	"beyond":         {},
+	"by":             {},
+	"despite":        {},
+	"down":           {},
+	"during":         {},
+	"except":         {},
+	"for":            {},
+	"from":           {},
+	"in":             {},
+	"inside":         {},
+	"into":           {},
+	"like":           {},
+	"near":           {},
+	"of":             {},
+	"off":            {},
+	"on":             {},
+	"onto":           {},
+	"out":            {},
+	"outside":        {},
+	"over":           {},
+	"past":           {},
+	"since":          {},
+	"through":        {},
+	"throughout":     {},
+	"till":           {},
+	"to":             {},
+	"toward":         {},
+	"under":          {},
+	"underneath":     {},
+	"until":          {},
+	"up":             {},
+	"upon":           {},
+	"with":           {},
+	"within":         {},
+	"without":        {},
 }
 
 type TextService struct {
@@ -69,7 +171,7 @@ func (ts *TextService) RemoveTags(input string) string {
 func (ts *TextService) RemoveSpecialChars(input string) string {
 	var builder strings.Builder
 	for _, r := range input {
-		if !strings.ContainsRune("•@#$%^&*_[]{}|;'\"<>/®™▪", r) {
+		if !strings.ContainsRune("•@#$%^&*_[]{}|;'\"<>/®™▪▪️️", r) {
 			builder.WriteString(string(r))
 		}
 	}
@@ -84,9 +186,14 @@ func (ts *TextService) ReduceToLength(input string, length int) string {
 	var builder strings.Builder
 	words := strings.Split(input, " ")
 	totalLength := 0
+	lastNonPrepositionIndex := -1
 
 	for i, word := range words {
 		if totalLength+len(word) > length {
+			break
+		}
+
+		if _, ok := prepositions[strings.ToLower(word)]; ok && totalLength+len(word)+3 >= length {
 			break
 		}
 
@@ -97,6 +204,15 @@ func (ts *TextService) ReduceToLength(input string, length int) string {
 
 		builder.WriteString(word)
 		totalLength += len(word)
+
+		if _, ok := prepositions[strings.ToLower(word)]; !ok {
+			lastNonPrepositionIndex = builder.Len()
+		}
+	}
+
+	// избавляемся от предлога в конце
+	if lastNonPrepositionIndex != -1 && lastNonPrepositionIndex < builder.Len() {
+		return builder.String()[:lastNonPrepositionIndex]
 	}
 
 	return builder.String()
@@ -135,6 +251,10 @@ func (ts *TextService) AddWordIfNotExistsToFront(input string, word string) stri
 	return ts.AddWordIfNotExists(input, word, 0)
 }
 
+func (ts *TextService) AddWordIfNotExistsToEnd(input string, word string) string {
+	return ts.AddWordIfNotExists(input, word, len(input))
+}
+
 func (ts *TextService) AddWordIfNotExists(input string, word string, index int) string {
 	word = ts.ValidateUTF8Word(word)
 
@@ -148,6 +268,13 @@ func (ts *TextService) AddWordIfNotExists(input string, word string, index int) 
 		return input[:index] + word + " " + input[index:]
 	}
 	return input
+}
+
+func (ts *TextService) FitIfPossible(input string, fit string, length int) string {
+	if len(input)+len(fit)+1 > length {
+		return input
+	}
+	return ts.AddWordIfNotExistsToEnd(input, fit)
 }
 
 func (ts *TextService) AddCategoryIfNotExistInAppellation(appellation string, category string) string {

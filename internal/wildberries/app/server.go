@@ -66,15 +66,15 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	log.Println("WB migrations applied successfully!")
 
 	log.SetPrefix("Naming updater ")
-	updateAppellations, err := s.cardService.UpdateCardNaming(request.Settings{
+	updateMedia, err := s.cardService.UpdateCardMedia(request.Settings{
 		Sort:   request.Sort{Ascending: false},
-		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-		Cursor: request.Cursor{Limit: 1000},
+		Filter: request.Filter{WithPhoto: 1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+		Cursor: request.Cursor{Limit: 1},
 	})
 	log.SetPrefix("")
 
 	if err != nil {
 		log.Fatalf("Error updating nomenclatures: %s\n", err)
 	}
-	log.Printf("\n\n\nUpdated %d nomenclatures\n", updateAppellations)
+	log.Printf("\n\n\nUpdated %d nomenclatures\n", updateMedia)
 }

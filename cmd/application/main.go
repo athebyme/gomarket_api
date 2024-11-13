@@ -8,12 +8,13 @@ import (
 	"gomarketplace_api/pkg/dbconnect/postgres"
 	"log"
 	"os"
+	"runtime"
 	"sync"
 )
 
 func main() {
 	log.Printf("\nStarted app\n")
-
+	runtime.GOMAXPROCS(6)
 	pgCfg := config.GetPostgresConfig()
 	wbCfg := config.GetWildberriesConfig()
 
@@ -26,8 +27,9 @@ func main() {
 	wg.Add(3)
 	go func() {
 		con := postgres.NewPgConnector(pgCfg)
-		handler := wsapp.NewAppHandler(con)
-		wsapp.SetupRoutes(handler)
+		handler := wsapp.NewProductHandler(con)
+		mediaHandler := wsapp.NewMediaHandler(con)
+		wsapp.SetupRoutes(handler, mediaHandler)
 		wg.Done()
 	}()
 	go func() {
@@ -36,7 +38,6 @@ func main() {
 		wserver.Run(&synchronize)
 		wg.Done()
 	}()
-
 	go func() {
 		con := postgres.NewPgConnector(pgCfg)
 		wbserver := wbapp.NewWbServer(con, wbCfg)

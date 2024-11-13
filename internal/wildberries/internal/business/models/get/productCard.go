@@ -1,6 +1,9 @@
 package get
 
-import "gomarketplace_api/internal/wildberries/internal/business/models/dto/response"
+import (
+	"encoding/json"
+	"gomarketplace_api/internal/wildberries/internal/business/models/dto/response"
+)
 
 type WildberriesCard struct {
 	NmID            int                       `json:"nmID"`
@@ -25,4 +28,8 @@ func (c *WildberriesCard) FromNomenclature(n response.Nomenclature) *Wildberries
 	card.Dimensions = *n.Dimensions.Unwrap()
 
 	return &card
+}
+
+func (c *WildberriesCard) ToBytes() ([]byte, error) {
+	return json.Marshal(c)
 }

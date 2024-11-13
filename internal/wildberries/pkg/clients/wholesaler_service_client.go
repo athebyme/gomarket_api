@@ -6,6 +6,7 @@ type WServiceClient struct {
 	*clients.AppellationsClient
 	*clients.DescriptionsClient
 	*clients.GlobalIDsClient
+	*clients.ImageClient
 }
 
 func NewWServiceClient(host string) *WServiceClient {
@@ -13,5 +14,6 @@ func NewWServiceClient(host string) *WServiceClient {
 		AppellationsClient: clients.NewAppellationsClient(host),
 		DescriptionsClient: clients.NewDescriptionsClient(host),
 		GlobalIDsClient:    clients.NewGlobalIDsClient(host),
+		ImageClient:        clients.NewImageClient(host),
 	}
 }

@@ -1,13 +1,16 @@
 package app
 
 import (
+	"database/sql"
 	"encoding/json"
 	"gomarketplace_api/internal/wholesaler/internal/business"
+	"gomarketplace_api/internal/wholesaler/internal/models/requests"
 	"gomarketplace_api/internal/wholesaler/internal/storage"
 	"gomarketplace_api/pkg/dbconnect"
 	"gomarketplace_api/pkg/dbconnect/migration"
 	"log"
 	"net/http"
+	"time"
 )
 
 type WholesalerServer struct {
@@ -32,6 +35,7 @@ func (s *WholesalerServer) Run(wg *chan struct{}) {
 		&storage.WholesalerDescriptions{},
 		&storage.WholesalerPrice{},
 		&storage.WholesalerStock{},
+		&storage.WholesalerMedia{},
 		&storage.ProductSize{},
 		&storage.Metadata{},
 	}
@@ -66,9 +70,12 @@ func (s *WholesalerServer) Run(wg *chan struct{}) {
 		log.Fatalf("Error updating products: %s\n", err)
 	}
 
+	mediaRepo := storage.NewMediaRepository(productRepo)
+	err = mediaRepo.PopulateMediaTable()
 	if err != nil {
-		log.Fatalf("Failed to create product repository: %v", err)
+		log.Fatalf("Error populating media table: %s\n", err)
 	}
+
 	defer productRepo.Close()
 
 	priceSource := storage.DataSource{
@@ -134,24 +141,22 @@ func (s *WholesalerServer) Run(wg *chan struct{}) {
 	*wg <- struct{}{}
 }
 
-type AppHandler struct {
+// прописать хендлеры для каждого эндпоинта !
+type HandlerInterface interface {
+	Connect() (*sql.DB, error)
+	Ping() error
+}
+
+type ProductHandler struct {
 	dbconnect.DbConnector
+	productService *business.ProductService
 }
 
-func NewAppHandler(connector dbconnect.DbConnector) *AppHandler {
-	return &AppHandler{connector}
-}
-
-func (h *AppHandler) GetGlobalIDsHandler(w http.ResponseWriter, r *http.Request) {
-	db, err := h.Connect()
+func NewProductHandler(connector dbconnect.DbConnector) *ProductHandler {
+	db, err := connector.Connect()
 	if err != nil {
-		return
+		return nil
 	}
-
-	if err = db.Ping(); err != nil {
-		return
-	}
-
 	productSource := storage.DataSource{
 		InfURL:           "http://sexoptovik.ru/files/all_prod_info.inf",
 		CSVURL:           "http://sexoptovik.ru/files/all_prod_info.csv",
@@ -171,14 +176,41 @@ func (h *AppHandler) GetGlobalIDsHandler(w http.ResponseWriter, r *http.Request)
 
 	productRepo := storage.NewProductRepository(db, productUpdater)
 	productService := business.NewProductService(productRepo)
-	globalIDs, err := productService.GetAllGlobalIDs()
+
+	return &ProductHandler{
+		DbConnector:    connector,
+		productService: productService,
+	}
+}
+
+func (h *ProductHandler) Connect() (*sql.DB, error) {
+	return h.DbConnector.Connect()
+}
+
+func (h *ProductHandler) Ping() error {
+	err := h.DbConnector.Ping()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *ProductHandler) GetGlobalIDsHandler(w http.ResponseWriter, r *http.Request) {
+	db, err := h.Connect()
 	if err != nil {
 		http.Error(w, "Failed to fetch Global IDs", http.StatusInternalServerError)
 		return
 	}
 
-	// ?
-	defer productRepo.Close()
+	if err = db.Ping(); err != nil {
+		return
+	}
+
+	globalIDs, err := h.productService.GetAllGlobalIDs()
+	if err != nil {
+		http.Error(w, "Failed to fetch Global IDs", http.StatusInternalServerError)
+		return
+	}
 
 	err = json.NewEncoder(w).Encode(globalIDs)
 	if err != nil {
@@ -186,44 +218,22 @@ func (h *AppHandler) GetGlobalIDsHandler(w http.ResponseWriter, r *http.Request)
 	}
 }
 
-func (h *AppHandler) GetAppellationHandler(w http.ResponseWriter, r *http.Request) {
+func (h *ProductHandler) GetAppellationHandler(w http.ResponseWriter, r *http.Request) {
 	db, err := h.Connect()
 	if err != nil {
 		return
 	}
 
 	if err = db.Ping(); err != nil {
-		return
-	}
-
-	productSource := storage.DataSource{
-		InfURL:           "http://sexoptovik.ru/files/all_prod_info.inf",
-		CSVURL:           "http://sexoptovik.ru/files/all_prod_info.csv",
-		LastUpdateColumn: "last_update_products"}
-
-	productUpdater := storage.NewPostgresUpdater(
-		db,
-		"wholesaler",
-		"product",
-		[]string{"global_id", "model", "appellation", "category",
-			"brand", "country", "product_type", "features",
-			"sex", "color", "dimension", "package",
-			"media", "barcodes", "material", "package_battery"},
-		productSource.LastUpdateColumn,
-		productSource.InfURL,
-		productSource.CSVURL)
-
-	productRepo := storage.NewProductRepository(db, productUpdater)
-
-	productService := business.NewProductService(productRepo)
-	appellations, err := productService.GetAllAppellations()
-	if err != nil {
 		http.Error(w, "Failed to fetch Global IDs", http.StatusInternalServerError)
 		return
 	}
 
-	// ?
-	defer productRepo.Close()
+	appellations, err := h.productService.GetAllAppellations()
+	if err != nil {
+		http.Error(w, "Failed to fetch Global IDs", http.StatusInternalServerError)
+		return
+	}
 
 	err = json.NewEncoder(w).Encode(appellations)
 	if err != nil {
@@ -231,7 +241,7 @@ func (h *AppHandler) GetAppellationHandler(w http.ResponseWriter, r *http.Reques
 	}
 }
 
-func (h *AppHandler) GetDescriptionsHandler(w http.ResponseWriter, r *http.Request) {
+func (h *ProductHandler) GetDescriptionsHandler(w http.ResponseWriter, r *http.Request) {
 	db, err := h.Connect()
 	if err != nil {
 		return
@@ -241,6 +251,28 @@ func (h *AppHandler) GetDescriptionsHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	descriptions, err := h.productService.GetAllDescriptions()
+	if err != nil {
+		http.Error(w, "Failed to fetch Global IDs", http.StatusInternalServerError)
+		return
+	}
+
+	err = json.NewEncoder(w).Encode(descriptions)
+	if err != nil {
+		log.Printf("Failed to fetch Appellations: %v", err)
+	}
+}
+
+type MediaHandler struct {
+	dbconnect.DbConnector
+	repo *storage.MediaRepository
+}
+
+func NewMediaHandler(connector dbconnect.DbConnector) *MediaHandler {
+	db, err := connector.Connect()
+	if err != nil {
+		return nil
+	}
 	productSource := storage.DataSource{
 		InfURL:           "http://sexoptovik.ru/files/all_prod_info.inf",
 		CSVURL:           "http://sexoptovik.ru/files/all_prod_info.csv",
@@ -259,27 +291,91 @@ func (h *AppHandler) GetDescriptionsHandler(w http.ResponseWriter, r *http.Reque
 		productSource.CSVURL)
 
 	productRepo := storage.NewProductRepository(db, productUpdater)
-
-	productService := business.NewProductService(productRepo)
-	descriptions, err := productService.GetAllDescriptions()
-	if err != nil {
-		http.Error(w, "Failed to fetch Global IDs", http.StatusInternalServerError)
-		return
-	}
-
-	// ?
-	defer productRepo.Close()
-
-	err = json.NewEncoder(w).Encode(descriptions)
-	if err != nil {
-		log.Printf("Failed to fetch Appellations: %v", err)
+	return &MediaHandler{
+		DbConnector: connector,
+		repo:        storage.NewMediaRepository(productRepo),
 	}
 }
 
-func SetupRoutes(handler *AppHandler) {
-	http.HandleFunc("/api/globalids", handler.GetGlobalIDsHandler)
-	http.HandleFunc("/api/appellations", handler.GetAppellationHandler)
-	http.HandleFunc("/api/descriptions", handler.GetDescriptionsHandler)
-	log.Printf("Запущен сервис /api/globalids")
+func (h *MediaHandler) GetMediaHandler(w http.ResponseWriter, r *http.Request) {
+
+	if err := h.Ping(); err != nil {
+		http.Error(w, "Failed to ping database", http.StatusInternalServerError)
+		return
+	}
+
+	// Декодирование тела запроса
+	var mediaReq requests.MediaRequest
+	if err := json.NewDecoder(r.Body).Decode(&mediaReq); err != nil {
+		http.Error(w, "Failed to decode request body", http.StatusBadRequest)
+		return
+	}
+
+	var mediaMap map[int][]string
+	var err error
+
+	startTime := time.Now()
+	if len(mediaReq.ProductIDs) == 0 { // Проверка наличия productIDs
+		mediaMap, err = h.repo.GetMediaSources(mediaReq.Censored)
+		if err != nil {
+			http.Error(w, "Failed to fetch all media sources", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		mediaMap, err = h.repo.GetMediaSourcesByProductIDs(mediaReq.ProductIDs, mediaReq.Censored)
+		if err != nil {
+			http.Error(w, "Failed to fetch media sources", http.StatusInternalServerError)
+			return
+		}
+	}
+	log.Printf("media source execution time: %v", time.Since(startTime))
+
+	// Кодирование ответа
+	err = json.NewEncoder(w).Encode(mediaMap)
+	if err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
+}
+
+func SetupRoutes(handlers ...HandlerInterface) {
+	// Создаем карту для хранения обработчиков по их типам
+	handlerMap := make(map[string]HandlerInterface)
+
+	// Заполняем карту обработчиков
+	for _, handler := range handlers {
+		switch h := handler.(type) {
+		case *ProductHandler:
+			handlerMap["ProductHandler"] = h
+		case *MediaHandler:
+			handlerMap["MediaHandler"] = h
+		default:
+			log.Printf("Unknown handler type: %T", h)
+		}
+	}
+
+	// Проверяем наличие необходимых обработчиков и вызываем Ping для каждого
+	for _, handler := range handlerMap {
+		if err := handler.Ping(); err != nil {
+			log.Fatalf("Failed to ping database: %v", err)
+		}
+	}
+
+	// Проверка и настройка маршрутов для ProductHandler
+	if productHandler, ok := handlerMap["ProductHandler"].(*ProductHandler); ok {
+		http.HandleFunc("/api/globalids", productHandler.GetGlobalIDsHandler)
+		http.HandleFunc("/api/appellations", productHandler.GetAppellationHandler)
+		http.HandleFunc("/api/descriptions", productHandler.GetDescriptionsHandler)
+	} else {
+		log.Fatalf("ProductHandler not provided")
+	}
+
+	if mediaHandler, ok := handlerMap["MediaHandler"].(*MediaHandler); ok {
+		http.HandleFunc("/api/media", mediaHandler.GetMediaHandler)
+	} else {
+		log.Fatalf("MediaHandler not provided")
+	}
+
+	log.Printf("Запущен сервис wholesaler /api/")
 	log.Fatal(http.ListenAndServe(":8081", nil))
 }

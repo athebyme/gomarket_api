@@ -85,6 +85,40 @@ func (m *WholesalerDescriptions) UpMigration(db *sql.DB) error {
 	return nil
 }
 
+type WholesalerMedia struct{}
+
+func (m *WholesalerMedia) UpMigration(db *sql.DB) error {
+	var migrationExists bool
+	err := db.QueryRow("SELECT EXISTS (SELECT 1 FROM migrations.migrations WHERE name = 'wholesaler.media')").Scan(&migrationExists)
+	if err != nil {
+		return fmt.Errorf("failed to check migration status: %w", err)
+	}
+	if migrationExists {
+		log.Println("Migration 'wholesaler.descriptions' already completed. Skipping.")
+		return nil
+	}
+	query :=
+		`	
+			CREATE TABLE IF NOT EXISTS wholesaler.media (
+			global_id INT,
+			images TEXT[],
+			images_censored TEXT[],
+			FOREIGN KEY (global_id) REFERENCES wholesaler.products(global_id)
+		);
+		`
+	_, err = db.Exec(query)
+	if err != nil {
+		return fmt.Errorf("failed to create wholesaler.media table: %w", err)
+	}
+	_, err = db.Exec("INSERT INTO migrations.migrations (name, time) VALUES ('wholesaler.media', current_timestamp)")
+	if err != nil {
+		return fmt.Errorf("failed to mark wholesaler.media migration as complete: %w", err)
+	}
+
+	log.Println("Migration 'wholesaler.media' completed successfully.")
+	return nil
+}
+
 type WholesalerStock struct{}
 
 func (m *WholesalerStock) UpMigration(db *sql.DB) error {

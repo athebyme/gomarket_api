@@ -24,6 +24,7 @@ type ITextService interface {
 	AddWordIfNotExistsToFront(input string, word string) string
 	AddWordIfNotExistsToEnd(input string, word string) string
 	ValidateUTF8Word(word string) string
+	EnsureSpaceAfterPeriod(input string) string
 }
 
 var engRusMap = map[string]string{
@@ -43,103 +44,53 @@ var engRusMap = map[string]string{
 }
 
 var prepositions = map[string]struct{}{
-	"в":              {},
-	"без":            {},
-	"до":             {},
-	"из":             {},
-	"к":              {},
-	"на":             {},
-	"по":             {},
-	"о":              {},
-	"от":             {},
-	"перед":          {},
-	"при":            {},
-	"про":            {},
-	"с":              {},
-	"у":              {},
-	"за":             {},
-	"над":            {},
-	"об":             {},
-	"под":            {},
-	"для":            {},
-	"через":          {},
-	"между":          {},
-	"благодаря":      {},
-	"вместо":         {},
-	"внутри":         {},
-	"вокруг":         {},
-	"вопреки":        {},
-	"впереди":        {},
-	"вплоть":         {},
-	"вслед":          {},
-	"вследствие":     {},
-	"накануне":       {},
-	"насчёт":         {},
-	"невзирая":       {},
-	"сверх":          {},
-	"среди":          {},
-	"сквозь":         {},
-	"посредством":    {},
-	"ради":           {},
-	"ввиду":          {},
-	"взамен":         {},
-	"исключая":       {},
-	"помимо":         {},
-	"посередине":     {},
-	"при помощи":     {},
-	"с учётом":       {},
-	"со стороны":     {},
-	"по отношению к": {},
-	"about":          {},
-	"above":          {},
-	"across":         {},
-	"after":          {},
-	"against":        {},
-	"along":          {},
-	"among":          {},
-	"around":         {},
-	"at":             {},
-	"before":         {},
-	"behind":         {},
-	"below":          {},
-	"beneath":        {},
-	"beside":         {},
-	"between":        {},
-	"beyond":         {},
-	"by":             {},
-	"despite":        {},
-	"down":           {},
-	"during":         {},
-	"except":         {},
-	"for":            {},
-	"from":           {},
-	"in":             {},
-	"inside":         {},
-	"into":           {},
-	"like":           {},
-	"near":           {},
-	"of":             {},
-	"off":            {},
-	"on":             {},
-	"onto":           {},
-	"out":            {},
-	"outside":        {},
-	"over":           {},
-	"past":           {},
-	"since":          {},
-	"through":        {},
-	"throughout":     {},
-	"till":           {},
-	"to":             {},
-	"toward":         {},
-	"under":          {},
-	"underneath":     {},
-	"until":          {},
-	"up":             {},
-	"upon":           {},
-	"with":           {},
-	"within":         {},
-	"without":        {},
+	// Русские предлоги
+	"в": {}, "во": {}, "на": {}, "с": {}, "со": {},
+	"по": {}, "о": {}, "об": {}, "обо": {}, "за": {},
+	"из": {}, "изо": {}, "к": {}, "ко": {}, "от": {},
+	"ото": {}, "до": {}, "у": {}, "перед": {}, "передо": {},
+	"для": {}, "про": {}, "над": {}, "под": {}, "при": {},
+	"через": {}, "между": {}, "без": {}, "вне": {}, "около": {},
+	"возле": {}, "рядом": {}, "близ": {}, "после": {}, "посредством": {},
+	"вдоль": {}, "вокруг": {}, "посредине": {}, "против": {}, "из-за": {},
+	"из-под": {}, "наподобие": {}, "взамен": {}, "вместо": {}, "среди": {},
+	"сквозь": {}, "благодаря": {}, "несмотря": {}, "вопреки": {},
+
+	// Русские союзы
+	"и": {}, "а": {}, "но": {}, "да": {}, "либо": {},
+	"или": {}, "что": {}, "чтобы": {}, "как": {}, "когда": {},
+	"если": {}, "хотя": {}, "потому": {}, "также": {}, "тоже": {},
+	"однако": {}, "зато": {}, "поскольку": {}, "так": {}, "будто": {},
+	"словно": {}, "только": {}, "раз": {}, "дабы": {}, "иначе": {},
+
+	// Русские частицы
+	"бы": {}, "ли": {}, "же": {}, "пусть": {}, "ведь": {},
+	"уж": {}, "лишь": {}, "даже": {}, "вот": {}, "вон": {},
+	"разве": {}, "едва ли": {}, "точно": {}, "неужели": {}, "именно": {},
+	"все-таки": {}, "например": {}, "как раз": {}, "только лишь": {},
+
+	// Английские предлоги
+	"at": {}, "by": {}, "for": {}, "from": {}, "in": {},
+	"of": {}, "on": {}, "to": {}, "with": {}, "about": {},
+	"against": {}, "between": {}, "into": {}, "through": {}, "during": {},
+	"before": {}, "after": {}, "above": {}, "below": {}, "under": {},
+	"over": {}, "around": {}, "among": {}, "across": {}, "behind": {},
+	"beyond": {}, "beside": {}, "near": {}, "outside": {}, "inside": {},
+	"without": {}, "within": {}, "along": {}, "towards": {}, "upon": {},
+
+	// Английские союзы
+	"and": {}, "or": {}, "but": {}, "nor": {},
+	"so": {}, "although": {}, "because": {}, "since": {},
+	"unless": {}, "while": {}, "whereas": {}, "if": {}, "then": {},
+	"however": {}, "whether": {}, "either": {}, "neither": {}, "as": {},
+	"though": {}, "until": {}, "once": {}, "even if": {}, "rather than": {},
+
+	// Английские частицы
+	"not": {}, "no": {}, "yes": {}, "indeed": {}, "only": {},
+	"just": {}, "almost": {}, "also": {}, "even": {}, "still": {},
+	"yet": {}, "too": {},
+	"perhaps": {}, "maybe": {}, "instead": {}, "thus": {},
+	"moreover": {}, "therefore": {}, "nonetheless": {}, "meanwhile": {},
 }
 
 type TextService struct {
@@ -223,10 +174,14 @@ func (ts *TextService) ClearAndReduce(input string, length int) string {
 	// Шаг 2: Удаляем ссылки
 	cleaned = ts.RemoveLinks(cleaned)
 	// Шаг 3: Умное сокращение до нужной длины
-	return ts.SmartReduceToLength(cleaned, length)
+	cleaned = ts.SmartReduceToLength(cleaned, length)
+	// Шаг 4: Убедиться, что после точки есть пробел
+	return ts.EnsureSpaceAfterPeriod(cleaned)
 }
+
 func (ts *TextService) RemoveLinks(input string) string {
-	re := regexp.MustCompile(`https?://[^\s]+`)
+	// Регулярное выражение для удаления ссылок вида "https://", "http://", и просто доменов
+	re := regexp.MustCompile(`https?:?/?/?[^\s]+|(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}`)
 	return re.ReplaceAllString(input, "")
 }
 
@@ -311,4 +266,8 @@ func (ts *TextService) TrimLastRunes(word string, n int) string {
 		return string(runes[:len(runes)-n])
 	}
 	return word
+}
+func (ts *TextService) EnsureSpaceAfterPeriod(input string) string {
+	re := regexp.MustCompile(`\.(\S)`)
+	return re.ReplaceAllString(input, ". $1")
 }

@@ -83,3 +83,19 @@ func (s *ProductService) GetAllDescriptions() (map[int]string, error) {
 	}
 	return res, nil
 }
+
+func (s *ProductService) GetAllMediaSources(censored bool, imgSize storage.ImageSize) (map[int][]string, error) {
+	res, err := s.repo.GetMediaSources(censored, imgSize)
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func (s *ProductService) GetAllMediaSourcesByProductIDs(globalIds []int, censored bool, imgSize storage.ImageSize) (map[int][]string, error) {
+	res, err := s.repo.GetMediaSourcesByProductIDs(globalIds, censored, imgSize)
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}

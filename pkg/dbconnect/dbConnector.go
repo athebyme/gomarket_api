@@ -4,4 +4,5 @@ import "database/sql"
 
 type DbConnector interface {
 	Connect() (*sql.DB, error)
+	Ping() error
 }

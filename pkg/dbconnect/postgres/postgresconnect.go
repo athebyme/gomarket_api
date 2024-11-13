@@ -2,9 +2,11 @@ package postgres
 
 import (
 	"database/sql"
+	"fmt"
 	_ "github.com/lib/pq"
 	"gomarketplace_api/config"
 	"log"
+	"sync"
 	"time"
 )
 
@@ -14,36 +16,59 @@ const retryDelay = 5 * time.Second
 
 type PgConnector struct {
 	config.DbConfig
+	db *sql.DB
+	mu sync.Mutex // Для защиты доступа к db
 }
 
 func NewPgConnector(dbConfig config.DbConfig) *PgConnector {
-	return &PgConnector{dbConfig}
+	return &PgConnector{DbConfig: dbConfig}
 }
-
 func (pg *PgConnector) Connect() (*sql.DB, error) {
-	var db *sql.DB
+	pg.mu.Lock()
+	defer pg.mu.Unlock()
+
+	if pg.db != nil {
+		return pg.db, nil
+	}
+
 	var err error
 	conStr := pg.GetConnectionString()
 
 	for i := 0; i < maxRetries; i++ {
-		db, err = sql.Open("postgres", conStr)
+		pg.db, err = sql.Open("postgres", conStr)
 		if err != nil {
 			log.Printf("Failed to connect to Postgres (attempt %d/%d): %v, %s", i+1, maxRetries, err, conStr)
 			time.Sleep(retryDelay)
 			continue
 		}
 
-		db.SetMaxOpenConns(dbMaxOpenConns)
+		pg.db.SetMaxOpenConns(dbMaxOpenConns)
 
-		if err := db.Ping(); err != nil {
+		if err := pg.db.Ping(); err != nil {
 			log.Printf("Failed to ping Postgres db (attempt %d/%d): %v, %s", i+1, maxRetries, err, conStr)
-			db.Close()
+			pg.db.Close()
 			time.Sleep(retryDelay)
 			continue
 		}
 
 		log.Printf("Successfully connected to Postgres: %s", conStr)
-		return db, nil
+		return pg.db, nil
 	}
 	return nil, err
+}
+
+func (pg *PgConnector) Ping() error {
+	pg.mu.Lock()
+	defer pg.mu.Unlock()
+
+	if pg.db == nil {
+		return fmt.Errorf("database connection is not established")
+	}
+
+	if err := pg.db.Ping(); err != nil {
+		pg.db.Close()
+		pg.db = nil
+		return fmt.Errorf("ping failed: %w", err)
+	}
+	return nil
 }

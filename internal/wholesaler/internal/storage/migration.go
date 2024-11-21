@@ -67,7 +67,7 @@ func (m *WholesalerDescriptions) UpMigration(db *sql.DB) error {
 	query :=
 		`	
 			CREATE TABLE IF NOT EXISTS wholesaler.descriptions (
-			global_id INT,
+			global_id INT UNIQUE,
 			product_description TEXT,
 			FOREIGN KEY (global_id) REFERENCES wholesaler.products(global_id)
 		);
@@ -134,7 +134,7 @@ func (m *WholesalerStock) UpMigration(db *sql.DB) error {
 	query :=
 		`
 		CREATE TABLE IF NOT EXISTS wholesaler.stocks (
-		    global_id INT,
+		    global_id INT UNIQUE,
 		    stocks INT,
 		    FOREIGN KEY (global_id) REFERENCES wholesaler.products(global_id)
 		);
@@ -167,7 +167,7 @@ func (m *WholesalerPrice) UpMigration(db *sql.DB) error {
 	query :=
 		`
 		CREATE TABLE IF NOT EXISTS wholesaler.price (
-		    global_id INT,
+		    global_id INT UNIQUE,
 		    price INT,
 		    FOREIGN KEY (global_id) REFERENCES wholesaler.products(global_id)
 		);

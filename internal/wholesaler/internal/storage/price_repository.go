@@ -39,6 +39,33 @@ func (r *PriceRepository) GetPriceByProductID(id int) (*models.Price, error) {
 	return &price, nil
 }
 
+func (r *PriceRepository) GetPrices() (map[int]int, error) {
+	query := `
+				SELECT global_id, price FROM wholesaler.price
+			 `
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка выполнения запроса для получения prices: %w", err)
+	}
+	defer rows.Close()
+
+	prices := make(map[int]int)
+	for rows.Next() {
+		var globalId int
+		var price int
+		if err := rows.Scan(&globalId, &price); err != nil {
+			return nil, fmt.Errorf("ошибка сканирования prices: %w", err)
+		}
+		prices[globalId] = price
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ошибка при итерации по строкам: %w", err)
+	}
+
+	return prices, nil
+}
+
 func (repo *PriceRepository) Update(args ...[]string) error {
 	return repo.updater.Update(args...)
 }

@@ -66,10 +66,10 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	log.Println("WB migrations applied successfully!")
 
 	log.SetPrefix("Naming updater ")
-	updateMedia, err := s.cardService.UpdateCardMedia(request.Settings{
+	updateMedia, err := s.cardService.UpdateCardNaming(request.Settings{
 		Sort:   request.Sort{Ascending: false},
 		Filter: request.Filter{WithPhoto: 1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-		Cursor: request.Cursor{Limit: 1},
+		Cursor: request.Cursor{Limit: 10000},
 	})
 	log.SetPrefix("")
 

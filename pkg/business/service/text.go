@@ -102,7 +102,9 @@ func NewTextService() *TextService {
 
 func (ts *TextService) ReplaceEngLettersToRus(input string) string {
 	for k, v := range engRusMap {
-		input = strings.Replace(input, k, v, -1)
+		if strings.Contains(input, k) {
+			return strings.Replace(input, k, v, 1)
+		}
 	}
 	return input
 }

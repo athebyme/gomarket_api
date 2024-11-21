@@ -44,6 +44,7 @@ func NewCardUpdater(nservice *get.NomenclatureEngine, textService service.ITextS
 const updateCardsUrl = "https://content-api.wildberries.ru/content/v2/cards/update"
 
 var numberOfErroredNomenclatures atomic.Int32
+var updatedCount atomic.Int32
 
 func UpdateCards() (int, error) {
 	panic("TO DO")
@@ -54,7 +55,6 @@ func (cu *CardUpdater) UpdateCardNaming(settings request.Settings) (int, error) 
 	const GOROUTINE_COUNT = 5
 	const REQUEST_RATE_LIMIT = 50 // 100 запросов в минуту = max
 	const UPLOAD_RATE_LIMIT = 10
-	var updatedCount = 0
 	var currentBatch []request.Model
 	var currentBatchSize int
 	var gotData []response.Nomenclature
@@ -159,7 +159,7 @@ func (cu *CardUpdater) UpdateCardNaming(settings request.Settings) (int, error) 
 				log.Printf("Error during uploading %s", err)
 				return
 			}
-			updatedCount += cards
+			updatedCount.Add(int32(cards))
 		}
 	}()
 
@@ -176,9 +176,8 @@ func (cu *CardUpdater) UpdateCardNaming(settings request.Settings) (int, error) 
 	uploadWg.Wait()
 
 	log.Printf("Goroutines fetchers got (%d) nomenclautres", goroutinesNmsCount.Load())
-	log.Printf("Update completed, total updated count: %d. Unfetched count : %d", updatedCount, numberOfErroredNomenclatures.Load())
-	return updatedCount, nil
-
+	log.Printf("Update completed, total updated count: %d. Unfetched count : %d", updatedCount.Load(), numberOfErroredNomenclatures.Load())
+	return int(updatedCount.Load()), nil
 }
 
 const updateCardsMediaUrl = "https://content-api.wildberries.ru/content/v3/media/save"
@@ -299,16 +298,16 @@ func (cu *CardUpdater) processAndUpload(url string, data interface{}) (int, erro
 						bannedArticlesSlice := strings.Split(bannedArticles, ", ")
 						filteredModels := cu.filterOutBannedModels(data, bannedArticlesSlice)
 						if len(filteredModels) > 0 {
-							_, err = cu.processAndUpload(url, filteredModels)
+							dataLen, err := cu.processAndUpload(url, filteredModels)
 							if err != nil {
 								return 0, err
 							}
+							return dataLen, nil
 						}
 					}
 				}
 			}
 		}
-		return 0, fmt.Errorf("update failed: %w", err)
 	}
 
 	// Используем универсальную функцию для получения длины данных
@@ -382,6 +381,7 @@ func (cu *CardUpdater) filterOutBannedModels(data interface{}, bannedArticles []
 	bannedSet := make(map[string]struct{}, len(bannedArticles))
 	for _, article := range bannedArticles {
 		bannedSet[article] = struct{}{}
+		numberOfErroredNomenclatures.Add(1)
 	}
 
 	var filteredModels []interface{}

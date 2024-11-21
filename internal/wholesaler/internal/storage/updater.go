@@ -208,20 +208,25 @@ func (pu *PostgresUpdater) updateDatabase(csvData [][]string) error {
 		return err
 	}
 
-	// Insert data from the temporary table into the main table, checking for duplicates
 	insertQuery := fmt.Sprintf(`
-			INSERT INTO %s.%s (%s)
-			SELECT %s FROM %s AS temp
-			LEFT JOIN %s.%s AS main
-			ON temp.%s = main.%s
-			WHERE main.%s IS NULL AND temp.%s IS NOT NULL
-		`,
-		pu.Schema, pu.TableName, strings.Join(pu.Columns, ","),
-		strings.Join(pu.ColumnsWithPrefix("temp."), ","),
-		tempTableName,
-		pu.Schema, pu.TableName,
-		pu.Columns[0], pu.Columns[0],
-		pu.Columns[0], pu.Columns[1]) // Проверка на NOT NULL для второго столбца
+    INSERT INTO %s.%s (%s)
+    SELECT %s 
+    FROM %s AS temp
+    LEFT JOIN %s.%s AS main
+    ON temp.%s = main.%s
+    WHERE main.%s IS NULL 
+    AND temp.%s IS NOT NULL
+    AND EXISTS (
+        SELECT 1 FROM %s.products p WHERE p.global_id = temp.global_id
+    )
+    ON CONFLICT (%s) DO NOTHING
+`,
+		pu.Schema, pu.TableName, strings.Join(pu.Columns, ","), // Схема, таблица и колонки для вставки
+		strings.Join(pu.ColumnsWithPrefix("temp."), ","), // Данные для вставки
+		tempTableName, pu.Schema, pu.TableName, // Временная таблица и основная таблица
+		pu.Columns[0], pu.Columns[0], // Условие соединения по ID
+		pu.Columns[0], pu.Columns[1], // WHERE условие
+		pu.Schema, pu.Columns[0]) // Проверка существования в таблице products
 
 	log.Printf("Insert query: %s", insertQuery)
 	startTime := time.Now()

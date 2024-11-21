@@ -4,6 +4,8 @@ import (
 	"flag"
 	"gomarketplace_api/config"
 	wsapp "gomarketplace_api/internal/wholesaler/app"
+	"gomarketplace_api/internal/wholesaler/app/web"
+	"gomarketplace_api/internal/wholesaler/app/web/handlers"
 	wbapp "gomarketplace_api/internal/wildberries/app"
 	"gomarketplace_api/pkg/dbconnect/postgres"
 	"log"
@@ -27,9 +29,10 @@ func main() {
 	wg.Add(3)
 	go func() {
 		con := postgres.NewPgConnector(pgCfg)
-		handler := wsapp.NewProductHandler(con)
-		mediaHandler := wsapp.NewMediaHandler(con)
-		wsapp.SetupRoutes(handler, mediaHandler)
+		handler := handlers.NewProductHandler(con)
+		mediaHandler := handlers.NewMediaHandler(con)
+		priceHandler := handlers.NewPriceHandler(con)
+		web.SetupRoutes(handler, mediaHandler, priceHandler)
 		wg.Done()
 	}()
 	go func() {
@@ -38,6 +41,7 @@ func main() {
 		wserver.Run(&synchronize)
 		wg.Done()
 	}()
+	wg.Wait()
 	go func() {
 		con := postgres.NewPgConnector(pgCfg)
 		wbserver := wbapp.NewWbServer(con, wbCfg)

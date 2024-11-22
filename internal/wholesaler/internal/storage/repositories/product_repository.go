@@ -1,20 +1,21 @@
-package storage
+package repositories
 
 import (
 	"database/sql"
 	"errors"
 	"fmt"
 	"gomarketplace_api/internal/wholesaler/internal/models"
+	"gomarketplace_api/internal/wholesaler/internal/storage"
 	"log"
 	"strings"
 )
 
 type ProductRepository struct {
 	db      *sql.DB
-	updater Updater
+	updater storage.Updater
 }
 
-func NewProductRepository(db *sql.DB, updater Updater) *ProductRepository {
+func NewProductRepository(db *sql.DB, updater storage.Updater) *ProductRepository {
 	log.Printf("ProductRepositpory successfully created.")
 	return &ProductRepository{
 		db:      db,

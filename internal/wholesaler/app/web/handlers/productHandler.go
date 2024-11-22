@@ -5,17 +5,18 @@ import (
 	"encoding/json"
 	"gomarketplace_api/internal/wholesaler/internal/business"
 	"gomarketplace_api/internal/wholesaler/internal/storage"
+	"gomarketplace_api/internal/wholesaler/internal/storage/repositories"
 	"gomarketplace_api/pkg/dbconnect"
 	"log"
 	"net/http"
 )
 
 type ProductHandler struct {
-	dbconnect.DbConnector
+	dbconnect.Database
 	productService *business.ProductService
 }
 
-func NewProductHandler(connector dbconnect.DbConnector) *ProductHandler {
+func NewProductHandler(connector dbconnect.Database) *ProductHandler {
 	db, err := connector.Connect()
 	if err != nil {
 		return nil
@@ -31,27 +32,27 @@ func NewProductHandler(connector dbconnect.DbConnector) *ProductHandler {
 		"product",
 		[]string{"global_id", "model", "appellation", "category",
 			"brand", "country", "product_type", "features",
-			"sex", "color", "dimension", "package",
+			"sex", "color", "dimension", "package", "empty",
 			"media", "barcodes", "material", "package_battery"},
 		productSource.LastUpdateColumn,
 		productSource.InfURL,
 		productSource.CSVURL)
 
-	productRepo := storage.NewProductRepository(db, productUpdater)
+	productRepo := repositories.NewProductRepository(db, productUpdater)
 	productService := business.NewProductService(productRepo)
 
 	return &ProductHandler{
-		DbConnector:    connector,
+		Database:       connector,
 		productService: productService,
 	}
 }
 
 func (h *ProductHandler) Connect() (*sql.DB, error) {
-	return h.DbConnector.Connect()
+	return h.Database.Connect()
 }
 
 func (h *ProductHandler) Ping() error {
-	err := h.DbConnector.Ping()
+	err := h.Database.Ping()
 	if err != nil {
 		return err
 	}

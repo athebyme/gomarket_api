@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-type DbConfig interface {
+type DatabaseConfig interface {
 	GetConnectionString() string
 }
 

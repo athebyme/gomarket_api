@@ -3,6 +3,7 @@ package storage
 import (
 	"database/sql"
 	"fmt"
+	"gomarketplace_api/internal/wholesaler/internal/models"
 	"log"
 )
 
@@ -33,6 +34,7 @@ func (m *WholesalerProducts) UpMigration(db *sql.DB) error {
 		color VARCHAR(255),
 		dimension TEXT,
 		package TEXT,
+		empty VARCHAR(255),
 		media VARCHAR(255),
 		barcodes VARCHAR(255),
 		material VARCHAR(255),
@@ -384,7 +386,7 @@ func processProducts(db *sql.DB) error {
 			return fmt.Errorf("failed to parse sizes for globalID %d: %w", globalID, err) // Более информативное сообщение
 		}
 
-		sizeMap := make(map[SizeDescriptorEnum]*float64)
+		sizeMap := make(map[models.SizeDescriptorEnum]*float64)
 		for _, size := range sizeDescriptors {
 			sizeMap[size.Descriptor] = &size.Value
 		}

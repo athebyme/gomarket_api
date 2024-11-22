@@ -26,7 +26,7 @@ import (
 )
 
 type CardUpdater struct {
-	NomenclatureService get.NomenclatureEngine
+	nomenclatureService get.NomenclatureEngine
 	wsclient            *clients2.WServiceClient
 	textService         service.ITextService
 	services.AuthEngine
@@ -34,7 +34,7 @@ type CardUpdater struct {
 
 func NewCardUpdater(nservice *get.NomenclatureEngine, textService service.ITextService, wsClientUrl string, auth services.AuthEngine) *CardUpdater {
 	return &CardUpdater{
-		NomenclatureService: *nservice,
+		nomenclatureService: *nservice,
 		wsclient:            clients2.NewWServiceClient(wsClientUrl),
 		textService:         textService,
 		AuthEngine:          auth,
@@ -71,7 +71,6 @@ func (cu *CardUpdater) UpdateCardNaming(settings request.Settings) (int, error) 
 	if err != nil {
 		return 0, fmt.Errorf("error fetching descriptions: %w", err)
 	}
-
 	var processWg sync.WaitGroup
 	var uploadWg sync.WaitGroup
 	var mu sync.Mutex
@@ -84,7 +83,7 @@ func (cu *CardUpdater) UpdateCardNaming(settings request.Settings) (int, error) 
 
 	log.Println("Fetching and sending nomenclatures to the channel...")
 	go func() {
-		if err := cu.NomenclatureService.GetNomenclaturesWithLimitConcurrentlyPutIntoChanel(settings, "", nomenclatureChan, responseLimiter); err != nil {
+		if err := cu.nomenclatureService.GetNomenclaturesWithLimitConcurrentlyPutIntoChanel(settings, "", nomenclatureChan, responseLimiter); err != nil {
 			log.Printf("Error fetching nomenclatures concurrently: %s", err)
 		}
 	}()
@@ -213,7 +212,7 @@ func (cu *CardUpdater) UpdateCardMedia(settings request.Settings) (int, error) {
 
 	log.Println("Fetching and sending nomenclatures to the channel...")
 	go func() {
-		if err := cu.NomenclatureService.GetNomenclaturesWithLimitConcurrentlyPutIntoChanel(settings, "", nomenclatureChan, responseLimiter); err != nil {
+		if err := cu.nomenclatureService.GetNomenclaturesWithLimitConcurrentlyPutIntoChanel(settings, "", nomenclatureChan, responseLimiter); err != nil {
 			log.Printf("Error fetching nomenclatures concurrently: %s", err)
 		}
 	}()

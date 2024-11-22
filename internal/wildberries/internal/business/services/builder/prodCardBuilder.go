@@ -45,6 +45,10 @@ func (b *ProductCardBuilder) WithNomenclature(n response.Nomenclature) *ProductC
 	b.nomenclature = &n
 	return b
 }
+
+func (b *ProductCardBuilder) Build() (interface{}, error) {
+	return b.card, nil
+}
 func (b *ProductCardBuilder) FromNomenclature() *ProductCardBuilder {
 	if b.nomenclature == nil {
 		return b

@@ -26,13 +26,16 @@ func main() {
 
 	synchronize := make(chan struct{}, 1)
 
+	writer := os.Stdout
+
 	wg.Add(3)
 	go func() {
 		con := postgres.NewPgConnector(pgCfg)
 		handler := handlers.NewProductHandler(con)
 		mediaHandler := handlers.NewMediaHandler(con)
 		priceHandler := handlers.NewPriceHandler(con)
-		web.SetupRoutes(handler, mediaHandler, priceHandler)
+		sizeHandler := handlers.NewSizeHandler(con, writer)
+		web.SetupRoutes(handler, mediaHandler, priceHandler, sizeHandler)
 		wg.Done()
 	}()
 	go func() {

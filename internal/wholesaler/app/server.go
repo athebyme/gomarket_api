@@ -2,16 +2,17 @@ package app
 
 import (
 	"gomarketplace_api/internal/wholesaler/internal/storage"
+	"gomarketplace_api/internal/wholesaler/internal/storage/repositories"
 	"gomarketplace_api/pkg/dbconnect"
 	"gomarketplace_api/pkg/dbconnect/migration"
 	"log"
 )
 
 type WholesalerServer struct {
-	dbconnect.DbConnector
+	dbconnect.Database
 }
 
-func NewWServer(dbCon dbconnect.DbConnector) *WholesalerServer {
+func NewWServer(dbCon dbconnect.Database) *WholesalerServer {
 	return &WholesalerServer{dbCon}
 }
 
@@ -52,19 +53,19 @@ func (s *WholesalerServer) Run(wg *chan struct{}) {
 		"products",
 		[]string{"global_id", "model", "appellation", "category",
 			"brand", "country", "product_type", "features",
-			"sex", "color", "dimension", "package",
+			"sex", "color", "dimension", "package", "empty",
 			"media", "barcodes", "material", "package_battery"},
 		productSource.LastUpdateColumn,
 		productSource.InfURL,
 		productSource.CSVURL)
 
-	productRepo := storage.NewProductRepository(db, productUpdater)
+	productRepo := repositories.NewProductRepository(db, productUpdater)
 	err = productRepo.Update()
 	if err != nil {
 		log.Fatalf("Error updating products: %s\n", err)
 	}
 
-	mediaRepo := storage.NewMediaRepository(productRepo)
+	mediaRepo := repositories.NewMediaRepository(productRepo)
 	err = mediaRepo.PopulateMediaTable()
 	if err != nil {
 		log.Fatalf("Error populating media table: %s\n", err)
@@ -86,7 +87,7 @@ func (s *WholesalerServer) Run(wg *chan struct{}) {
 		priceSource.InfURL,
 		priceSource.CSVURL)
 
-	priceRepo := storage.NewPriceRepository(db, priceUpdater)
+	priceRepo := repositories.NewPriceRepository(db, priceUpdater)
 	err = priceRepo.Update([]string{"global_id", "price"})
 	if err != nil {
 		return
@@ -107,7 +108,7 @@ func (s *WholesalerServer) Run(wg *chan struct{}) {
 		stockSource.InfURL,
 		stockSource.CSVURL)
 
-	stocksRepo := storage.NewStocksRepository(db, stockUpdater)
+	stocksRepo := repositories.NewStocksRepository(db, stockUpdater)
 	err = stocksRepo.Update([]string{"global_id", "stocks"})
 	if err != nil {
 		return

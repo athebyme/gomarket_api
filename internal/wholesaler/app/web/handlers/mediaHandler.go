@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"gomarketplace_api/internal/wholesaler/internal/models/requests"
 	"gomarketplace_api/internal/wholesaler/internal/storage"
+	"gomarketplace_api/internal/wholesaler/internal/storage/repositories"
 	"gomarketplace_api/pkg/dbconnect"
 	"log"
 	"net/http"
@@ -11,11 +12,11 @@ import (
 )
 
 type MediaHandler struct {
-	dbconnect.DbConnector
-	repo *storage.MediaRepository
+	dbconnect.Database
+	repo *repositories.MediaRepository
 }
 
-func NewMediaHandler(connector dbconnect.DbConnector) *MediaHandler {
+func NewMediaHandler(connector dbconnect.Database) *MediaHandler {
 	db, err := connector.Connect()
 	if err != nil {
 		return nil
@@ -37,10 +38,10 @@ func NewMediaHandler(connector dbconnect.DbConnector) *MediaHandler {
 		productSource.InfURL,
 		productSource.CSVURL)
 
-	productRepo := storage.NewProductRepository(db, productUpdater)
+	productRepo := repositories.NewProductRepository(db, productUpdater)
 	return &MediaHandler{
-		DbConnector: connector,
-		repo:        storage.NewMediaRepository(productRepo),
+		Database: connector,
+		repo:     repositories.NewMediaRepository(productRepo),
 	}
 }
 

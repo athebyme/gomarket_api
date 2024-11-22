@@ -3,7 +3,7 @@ package business
 import (
 	"errors"
 	"gomarketplace_api/internal/wholesaler/internal/models"
-	"gomarketplace_api/internal/wholesaler/internal/storage"
+	"gomarketplace_api/internal/wholesaler/internal/storage/repositories"
 	"log"
 	"math"
 	"math/rand"
@@ -11,10 +11,10 @@ import (
 )
 
 type PriceEngine struct {
-	repo *storage.PriceRepository
+	repo *repositories.PriceRepository
 }
 
-func NewPriceEngine(repo *storage.PriceRepository) *PriceEngine {
+func NewPriceEngine(repo *repositories.PriceRepository) *PriceEngine {
 	return &PriceEngine{repo}
 }
 

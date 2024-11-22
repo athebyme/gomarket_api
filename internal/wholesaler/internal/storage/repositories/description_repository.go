@@ -1,16 +1,17 @@
-package storage
+package repositories
 
 import (
 	"database/sql"
+	"gomarketplace_api/internal/wholesaler/internal/storage"
 	"log"
 )
 
 type DescriptionsRepository struct {
 	db      *sql.DB
-	updater Updater
+	updater storage.Updater
 }
 
-func NewDescriptionsRepository(db *sql.DB, updater Updater) *DescriptionsRepository {
+func NewDescriptionsRepository(db *sql.DB, updater storage.Updater) *DescriptionsRepository {
 	log.Println("Successfully connected to wholesaler descriptions repository")
 	return &DescriptionsRepository{db: db, updater: updater}
 }

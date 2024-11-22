@@ -5,6 +5,7 @@ import (
 	"gomarketplace_api/internal/wholesaler/internal/business"
 	"gomarketplace_api/internal/wholesaler/internal/models/requests"
 	"gomarketplace_api/internal/wholesaler/internal/storage"
+	"gomarketplace_api/internal/wholesaler/internal/storage/repositories"
 	"gomarketplace_api/pkg/dbconnect"
 	"log"
 	"net/http"
@@ -12,11 +13,11 @@ import (
 )
 
 type PriceHandler struct {
-	dbconnect.DbConnector
+	dbconnect.Database
 	business.PriceService
 }
 
-func NewPriceHandler(connector dbconnect.DbConnector) *PriceHandler {
+func NewPriceHandler(connector dbconnect.Database) *PriceHandler {
 	db, err := connector.Connect()
 	if err != nil {
 		return nil
@@ -35,7 +36,7 @@ func NewPriceHandler(connector dbconnect.DbConnector) *PriceHandler {
 		priceSource.InfURL,
 		priceSource.CSVURL)
 
-	priceRepo := storage.NewPriceRepository(db, priceUpdater)
+	priceRepo := repositories.NewPriceRepository(db, priceUpdater)
 	err = priceRepo.Update([]string{"global_id", "price"})
 	if err != nil {
 		return nil
@@ -44,7 +45,7 @@ func NewPriceHandler(connector dbconnect.DbConnector) *PriceHandler {
 	priceService := business.NewPriceEngine(priceRepo)
 
 	return &PriceHandler{
-		DbConnector:  connector,
+		Database:     connector,
 		PriceService: priceService,
 	}
 }

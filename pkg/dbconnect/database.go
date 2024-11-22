@@ -2,7 +2,7 @@ package dbconnect
 
 import "database/sql"
 
-type DbConnector interface {
+type Database interface {
 	Connect() (*sql.DB, error)
 	Ping() error
 }

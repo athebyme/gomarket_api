@@ -16,12 +16,12 @@ import (
 
 type WildberriesServer struct {
 	cardService *update.CardUpdater
-	dbconnect.DbConnector
+	dbconnect.Database
 	config.MarketplaceConfig
 }
 
-func NewWbServer(connector dbconnect.DbConnector, marketplaceConfig config.MarketplaceConfig) *WildberriesServer {
-	return &WildberriesServer{DbConnector: connector, MarketplaceConfig: marketplaceConfig}
+func NewWbServer(connector dbconnect.Database, marketplaceConfig config.MarketplaceConfig) *WildberriesServer {
+	return &WildberriesServer{Database: connector, MarketplaceConfig: marketplaceConfig}
 }
 
 func (s *WildberriesServer) Run(wg *chan struct{}) {

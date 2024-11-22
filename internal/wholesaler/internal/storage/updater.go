@@ -216,7 +216,7 @@ func (pu *PostgresUpdater) updateDatabase(csvData [][]string) error {
     ON temp.%s = main.%s
     WHERE main.%s IS NULL 
     AND temp.%s IS NOT NULL
-    AND EXISTS (
+    AND NOT EXISTS (
         SELECT 1 FROM %s.products p WHERE p.global_id = temp.global_id
     )
     ON CONFLICT (%s) DO NOTHING
@@ -225,7 +225,7 @@ func (pu *PostgresUpdater) updateDatabase(csvData [][]string) error {
 		strings.Join(pu.ColumnsWithPrefix("temp."), ","), // Данные для вставки
 		tempTableName, pu.Schema, pu.TableName, // Временная таблица и основная таблица
 		pu.Columns[0], pu.Columns[0], // Условие соединения по ID
-		pu.Columns[0], pu.Columns[1], // WHERE условие
+		pu.Columns[0], pu.Columns[0], // WHERE условие
 		pu.Schema, pu.Columns[0]) // Проверка существования в таблице products
 
 	log.Printf("Insert query: %s", insertQuery)

@@ -14,16 +14,16 @@ const maxRetries = 10
 const dbMaxOpenConns = 20
 const retryDelay = 5 * time.Second
 
-type PgConnector struct {
-	config.DbConfig
+type PostgresDatabase struct {
+	config.DatabaseConfig
 	db *sql.DB
 	mu sync.Mutex // Для защиты доступа к db
 }
 
-func NewPgConnector(dbConfig config.DbConfig) *PgConnector {
-	return &PgConnector{DbConfig: dbConfig}
+func NewPgConnector(dbConfig config.DatabaseConfig) *PostgresDatabase {
+	return &PostgresDatabase{DatabaseConfig: dbConfig}
 }
-func (pg *PgConnector) Connect() (*sql.DB, error) {
+func (pg *PostgresDatabase) Connect() (*sql.DB, error) {
 	pg.mu.Lock()
 	defer pg.mu.Unlock()
 
@@ -57,7 +57,7 @@ func (pg *PgConnector) Connect() (*sql.DB, error) {
 	return nil, err
 }
 
-func (pg *PgConnector) Ping() error {
+func (pg *PostgresDatabase) Ping() error {
 	pg.mu.Lock()
 	defer pg.mu.Unlock()
 

@@ -30,6 +30,8 @@ func (s *CardService) FetchCards(ids []int) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return appellations, nil
 }
 
 func (s *CardService) filterAppellations(ids []int) (interface{}, error) {

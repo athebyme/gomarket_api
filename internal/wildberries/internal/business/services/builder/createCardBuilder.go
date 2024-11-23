@@ -6,61 +6,75 @@ import (
 )
 
 type CreateCardBuilder struct {
-	brand           string
-	title           string
-	description     string
-	vendorCode      string
-	dimensions      response.DimensionWrapper
-	sizes           []response.Size
-	characteristics []response.CharcWrapper
+	Brand           string
+	Title           string
+	Description     string
+	VendorCode      string
+	Dimensions      response.DimensionWrapper
+	Sizes           []response.Size
+	Characteristics []response.CharcWrapper
+}
+
+func NewCreateCardBuilder() *CreateCardBuilder {
+	return &CreateCardBuilder{}
 }
 
 func (b *CreateCardBuilder) WithBrand(brand string) *CreateCardBuilder {
-	b.brand = brand
+	b.Brand = brand
 	return b
 }
 func (b *CreateCardBuilder) WithTitle(title string) *CreateCardBuilder {
-	b.title = title
+	b.Title = title
 	return b
 }
 func (b *CreateCardBuilder) WithDescription(description string) *CreateCardBuilder {
-	b.description = description
+	b.Description = description
 	return b
 }
 func (b *CreateCardBuilder) WithVendorCode(vendorCode string) *CreateCardBuilder {
-	b.vendorCode = vendorCode
+	b.VendorCode = vendorCode
 	return b
 }
 func (b *CreateCardBuilder) WithDimensions(dimensions response.Dimensions) *CreateCardBuilder {
-	b.dimensions = *dimensions.Unwrap()
+	b.Dimensions = *dimensions.Unwrap()
 	return b
 }
 func (b *CreateCardBuilder) WithDimensionWrapper(dimensions response.DimensionWrapper) *CreateCardBuilder {
-	b.dimensions = dimensions
+	b.Dimensions = dimensions
 	return b
 }
 func (b *CreateCardBuilder) WithSizes(sizes []response.Size) *CreateCardBuilder {
-	b.sizes = sizes
+	b.Sizes = sizes
 	return b
 }
 func (b *CreateCardBuilder) WithCharacteristics(charcs []response.CharcWrapper) *CreateCardBuilder {
-	b.characteristics = charcs
+	b.Characteristics = charcs
 	return b
 }
 
 func (b *CreateCardBuilder) Build() (interface{}, error) {
 	var card *request.CreateCardRequestData
 	card = &request.CreateCardRequestData{
-		Brand:           b.brand,
-		Title:           b.title,
-		Description:     b.description,
-		VendorCode:      b.vendorCode,
-		Dimensions:      b.dimensions,
-		Sizes:           b.sizes,
-		Characteristics: b.characteristics,
+		Brand:           b.Brand,
+		Title:           b.Title,
+		Description:     b.Description,
+		VendorCode:      b.VendorCode,
+		Dimensions:      b.Dimensions,
+		Sizes:           b.Sizes,
+		Characteristics: b.Characteristics,
 	}
 	if err := card.Validate(); err != nil {
 		return nil, err
 	}
 	return card, nil
+}
+
+func (b *CreateCardBuilder) Clear() {
+	b.Brand = ""
+	b.Title = ""
+	b.Description = ""
+	b.VendorCode = ""
+	b.Dimensions = response.DimensionWrapper{}
+	b.Sizes = []response.Size{}
+	b.Characteristics = []response.CharcWrapper{}
 }

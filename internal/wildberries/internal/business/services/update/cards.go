@@ -14,6 +14,7 @@ import (
 	"gomarketplace_api/internal/wildberries/internal/business/services/get"
 	clients2 "gomarketplace_api/internal/wildberries/pkg/clients"
 	"gomarketplace_api/pkg/business/service"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -32,10 +33,10 @@ type CardUpdater struct {
 	services.AuthEngine
 }
 
-func NewCardUpdater(nservice *get.NomenclatureEngine, textService service.ITextService, wsClientUrl string, auth services.AuthEngine) *CardUpdater {
+func NewCardUpdater(nservice *get.NomenclatureEngine, textService service.ITextService, wsClientUrl string, auth services.AuthEngine, writer io.Writer) *CardUpdater {
 	return &CardUpdater{
 		nomenclatureService: *nservice,
-		wsclient:            clients2.NewWServiceClient(wsClientUrl),
+		wsclient:            clients2.NewWServiceClient(wsClientUrl, writer),
 		textService:         textService,
 		AuthEngine:          auth,
 	}
@@ -60,10 +61,10 @@ func (cu *CardUpdater) UpdateCardNaming(settings request.Settings) (int, error) 
 	var gotData []response.Nomenclature
 	var goroutinesNmsCount atomic.Int32
 
-	log.Println("Fetching appellations...")
+	log.Println("Fetching filterAppellations...")
 	appellationsMap, err := cu.wsclient.FetchAppellations()
 	if err != nil {
-		return 0, fmt.Errorf("error fetching appellations: %w", err)
+		return 0, fmt.Errorf("error fetching filterAppellations: %w", err)
 	}
 
 	log.Println("Fetching descriptions...")

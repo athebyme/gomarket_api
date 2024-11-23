@@ -30,7 +30,12 @@ func NewCardUploaderImpl(auth services.AuthEngine) *CardUploaderImpl {
 }
 
 func (c *CardUploaderImpl) Upload(data []byte) (int, error) {
-	body, length, err := c.uploadModels(uploadUrl, data)
+	req, err := c.PreloadCheck(data)
+	if err != nil {
+		return 0, err
+	}
+
+	body, length, err := c.uploadModels(uploadUrl, req)
 	if err != nil {
 		return 0, err
 	}

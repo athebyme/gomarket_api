@@ -1,5 +1,5 @@
 package parse
 
-type Parser interface {
-	Fetch(interface{}) (interface{}, error)
+type BuilderEngine interface {
+	Build() (interface{}, error)
 }

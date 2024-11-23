@@ -20,3 +20,6 @@ func (d *Dimensions) Unwrap() *DimensionWrapper {
 		Height: d.Height,
 	}
 }
+
+type Config struct {
+}

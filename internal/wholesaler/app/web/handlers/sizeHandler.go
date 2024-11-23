@@ -66,7 +66,7 @@ func (h *SizeHandler) GetSizeHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 
-	h.logger.Log("media source execution time: %v", time.Since(startTime))
+	h.logger.Log("size handler response execution time: %v", time.Since(startTime))
 
 	// Кодирование ответа
 	err = json.NewEncoder(w).Encode(sizes)

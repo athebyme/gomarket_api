@@ -76,7 +76,7 @@ func (h *MediaHandler) GetMediaHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	log.Printf("media source execution time: %v", time.Since(startTime))
+	log.Printf("media handler response execution time: %v", time.Since(startTime))
 
 	// Кодирование ответа
 	err = json.NewEncoder(w).Encode(mediaMap)

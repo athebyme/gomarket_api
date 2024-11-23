@@ -1,33 +1,37 @@
 package config
 
 import (
-	"flag"
-	"log"
+	"gopkg.in/yaml.v3"
 	"os"
 )
 
-type Config interface{}
+type Config interface {
+}
 
 type MarketplaceConfig interface {
-	ApiKey() string
 }
 
 type WildberriesConfig struct {
-	apiKey string
+	ApiKey   string                  `yaml:"api_key"`
+	WbValues WildberriesValuesConfig `yaml:"default_values"`
 }
 
-func (cfg *WildberriesConfig) ApiKey() string {
-	return cfg.apiKey
+type AppConfig struct {
+	Wildberries WildberriesConfig `yaml:"wildberries"`
+	Postgres    PostgresConfig    `yaml:"postgres"`
 }
 
-func GetWildberriesConfig() *WildberriesConfig {
-	apiKey := flag.String("WB_API_KEY", "", "Wildberries API key")
-	if *apiKey == "" {
-		if envApiKey, exists := os.LookupEnv("WB_API_KEY"); exists {
-			apiKey = &envApiKey
-		} else {
-			log.Fatal("wildberries api key is required")
-		}
+func LoadConfig(filename string) (*AppConfig, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
 	}
-	return &WildberriesConfig{apiKey: *apiKey}
+	defer file.Close()
+
+	decoder := yaml.NewDecoder(file)
+	config := &AppConfig{}
+	if err := decoder.Decode(config); err != nil {
+		return nil, err
+	}
+	return config, nil
 }

@@ -1,5 +1,5 @@
 package builder
 
-type Builder interface {
+type Proxy interface {
 	Build() (interface{}, error)
 }

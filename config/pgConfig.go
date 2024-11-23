@@ -11,11 +11,11 @@ type DatabaseConfig interface {
 
 // PostgresConfig represents the configuration needed to connect to a PostgreSQL database
 type PostgresConfig struct {
-	Host     string
-	Port     string
-	User     string
-	Password string
-	DBName   string
+	Host     string `yaml:"host"`
+	Port     string `yaml:"port"`
+	User     string `yaml:"username"`
+	Password string `yaml:"password"`
+	DBName   string `yaml:"db_name"`
 }
 
 func (pc *PostgresConfig) GetConnectionString() string {

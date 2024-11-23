@@ -11,24 +11,26 @@ import (
 	"gomarketplace_api/pkg/business/service"
 	"gomarketplace_api/pkg/dbconnect"
 	"gomarketplace_api/pkg/dbconnect/migration"
+	"io"
 	"log"
 )
 
 type WildberriesServer struct {
 	cardService *update.CardUpdater
 	dbconnect.Database
-	config.MarketplaceConfig
+	config.WildberriesConfig
+	writer io.Writer
 }
 
-func NewWbServer(connector dbconnect.Database, marketplaceConfig config.MarketplaceConfig) *WildberriesServer {
-	return &WildberriesServer{Database: connector, MarketplaceConfig: marketplaceConfig}
+func NewWbServer(connector dbconnect.Database, wbConfig config.WildberriesConfig, writer io.Writer) *WildberriesServer {
+	return &WildberriesServer{Database: connector, WildberriesConfig: wbConfig, writer: writer}
 }
 
 func (s *WildberriesServer) Run(wg *chan struct{}) {
 	<-*wg
 
 	var authEngine services.AuthEngine
-	authEngine = services.NewBearerAuth(s.ApiKey())
+	authEngine = services.NewBearerAuth(s.ApiKey)
 
 	var db, err = s.Connect()
 	if err != nil {
@@ -45,6 +47,7 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 		service.NewTextService(),
 		"http://localhost:8081",
 		authEngine,
+		s.writer,
 	)
 
 	migrationApply := []migration.MigrationInterface{

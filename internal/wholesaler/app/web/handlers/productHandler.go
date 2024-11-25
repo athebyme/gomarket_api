@@ -39,29 +39,13 @@ func NewProductHandler(connector dbconnect.Database) *ProductHandler {
 		productSource.CSVURL)
 
 	productRepo := repositories.NewProductRepository(db, productUpdater)
-	productService := business.NewProductService(productRepo)
 
-	descSources := storage.DataSource{
-		InfURL:           "http://sexoptovik.ru/files/all_prod_info.inf",
-		CSVURL:           "http://www.sexoptovik.ru/files/all_prod_d33_.csv",
-		LastUpdateColumn: "last_update_descriptions"}
-
-	descUpdater := storage.NewPostgresUpdater(
-		db,
-		"wholesaler",
-		"descriptions",
-		[]string{"global_id", "product_description"},
-		descSources.LastUpdateColumn,
-		descSources.InfURL,
-		descSources.CSVURL)
-
-	descRepo := repositories.NewDescriptionsRepository(db, descUpdater)
-	defer descRepo.Close()
-
-	err = descRepo.Update()
+	err = productRepo.Update()
 	if err != nil {
-		log.Printf("Failed to fetch Descriptions: %v", err)
+		return nil
 	}
+
+	productService := business.NewProductService(productRepo)
 
 	return &ProductHandler{
 		Database:       connector,

@@ -209,24 +209,24 @@ func (pu *PostgresUpdater) updateDatabase(csvData [][]string) error {
 	}
 
 	insertQuery := fmt.Sprintf(`
-    INSERT INTO %s.%s (%s)
-    SELECT %s 
-    FROM %s AS temp
-    LEFT JOIN %s.%s AS main
-    ON temp.%s = main.%s
-    WHERE main.%s IS NULL 
-    AND temp.%s IS NOT NULL
-    AND NOT EXISTS (
-        SELECT 1 FROM %s.products p WHERE p.global_id = temp.global_id
-    )
-    ON CONFLICT (%s) DO NOTHING
-`,
+			INSERT INTO %s.%s (%s)
+			SELECT %s 
+			FROM %s AS temp
+			LEFT JOIN %s.%s AS main
+			ON temp.%s = main.%s
+			WHERE main.%s IS NULL 
+			AND temp.%s IS NOT NULL
+			AND NOT EXISTS (
+				SELECT 1 FROM %s.%s p WHERE p.global_id = temp.global_id
+			)
+			ON CONFLICT (%s) DO NOTHING
+		`,
 		pu.Schema, pu.TableName, strings.Join(pu.Columns, ","), // Схема, таблица и колонки для вставки
 		strings.Join(pu.ColumnsWithPrefix("temp."), ","), // Данные для вставки
 		tempTableName, pu.Schema, pu.TableName, // Временная таблица и основная таблица
 		pu.Columns[0], pu.Columns[0], // Условие соединения по ID
 		pu.Columns[0], pu.Columns[0], // WHERE условие
-		pu.Schema, pu.Columns[0]) // Проверка существования в таблице products
+		pu.Schema, pu.TableName, pu.Columns[0]) // Проверка существования в таблице products
 
 	log.Printf("Insert query: %s", insertQuery)
 	startTime := time.Now()

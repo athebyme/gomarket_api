@@ -35,6 +35,7 @@ func main() {
 	writer := os.Stdout
 
 	wg.Add(3)
+
 	go func() {
 		con := postgres.NewPgConnector(pgConfig)
 		handler := handlers.NewProductHandler(con)

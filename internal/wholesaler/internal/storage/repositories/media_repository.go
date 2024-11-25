@@ -9,17 +9,17 @@ import (
 )
 
 type MediaRepository struct {
-	*ProductRepository
+	prodRepo *ProductRepository
 }
 
 func NewMediaRepository(repo *ProductRepository) *MediaRepository {
-	return &MediaRepository{ProductRepository: repo}
+	return &MediaRepository{prodRepo: repo}
 }
 
 func (r *MediaRepository) PopulateMediaTable() error {
 	log.Printf("Checking for new media urls...")
 	// Получение всех global_id из таблицы products
-	rows, err := r.db.Query("SELECT global_id FROM wholesaler.products WHERE global_id NOT IN (SELECT global_id FROM wholesaler.media)")
+	rows, err := r.prodRepo.db.Query("SELECT global_id FROM wholesaler.products WHERE global_id NOT IN (SELECT global_id FROM wholesaler.media)")
 	if err != nil {
 		return fmt.Errorf("failed to fetch global_ids: %w", err)
 	}
@@ -32,20 +32,20 @@ func (r *MediaRepository) PopulateMediaTable() error {
 		}
 
 		// Генерация медиа-URL для неконфиденциальных и конфиденциальных изображений
-		mediaUrls, err := r.GetMediaSourceByProductID(globalID, false)
+		mediaUrls, err := r.getMediaSourceByProductID(globalID, false)
 		if err != nil {
 			log.Printf("Failed to get media sources for global_id %d: %v", globalID, err)
 			continue
 		}
 
-		mediaUrlsCensored, err := r.GetMediaSourceByProductID(globalID, true)
+		mediaUrlsCensored, err := r.getMediaSourceByProductID(globalID, true)
 		if err != nil {
 			log.Printf("Failed to get censored media sources for global_id %d: %v", globalID, err)
 			continue
 		}
 
 		// Вставка данных в таблицу media
-		_, err = r.db.Exec("INSERT INTO wholesaler.media (global_id, images, images_censored) VALUES ($1, $2, $3)",
+		_, err = r.prodRepo.db.Exec("INSERT INTO wholesaler.media (global_id, images, images_censored) VALUES ($1, $2, $3)",
 			globalID, pq.Array(mediaUrls), pq.Array(mediaUrlsCensored))
 		if err != nil {
 			log.Printf("Failed to insert media for global_id %d: %v", globalID, err)
@@ -73,7 +73,7 @@ func (r *MediaRepository) GetMediaSourceByProductID(productID int, censored bool
 	query := `SELECT CASE WHEN $2 THEN images_censored ELSE images END FROM wholesaler.media WHERE global_id = $1`
 
 	var mediaUrls []string
-	err := r.db.QueryRow(query, productID, censored).Scan(
+	err := r.prodRepo.db.QueryRow(query, productID, censored).Scan(
 		pq.Array(&mediaUrls),
 	)
 	if err != nil {
@@ -102,7 +102,7 @@ func (r *MediaRepository) GetMediaSources(censored bool) (map[int][]string, erro
 	// Изменяем запрос в зависимости от значения параметра `censored`
 	query := `SELECT global_id, CASE WHEN $1 THEN images_censored ELSE images END FROM wholesaler.media`
 
-	rows, err := r.db.Query(query, censored)
+	rows, err := r.prodRepo.db.Query(query, censored)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка выполнения запроса для получения media: %w", err)
 	}
@@ -124,4 +124,15 @@ func (r *MediaRepository) GetMediaSources(censored bool) (map[int][]string, erro
 	}
 
 	return mediaMap, nil
+}
+
+func (r *MediaRepository) getMediaSourceByProductID(productID int, censored bool) ([]string, error) {
+	v, err := r.prodRepo.GetMediaSourceByProductID(productID, censored, BigSize)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("error during getting media sources")
+	}
+	return v, nil
 }

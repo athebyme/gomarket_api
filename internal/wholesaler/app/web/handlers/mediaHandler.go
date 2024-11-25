@@ -21,6 +21,9 @@ func NewMediaHandler(connector dbconnect.Database) *MediaHandler {
 	if err != nil {
 		return nil
 	}
+	if err := db.Ping(); err != nil {
+		return nil
+	}
 	productSource := storage.DataSource{
 		InfURL:           "http://sexoptovik.ru/files/all_prod_info.inf",
 		CSVURL:           "http://sexoptovik.ru/files/all_prod_info.csv",

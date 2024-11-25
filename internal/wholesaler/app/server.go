@@ -26,13 +26,13 @@ func (s *WholesalerServer) Run(wg *chan struct{}) {
 	migrationApply := []migration.MigrationInterface{
 		&storage.WholesalerSchema{},
 		&storage.MigrationsSchema{},
+		&storage.Metadata{},
 		&storage.WholesalerProducts{},
 		&storage.WholesalerDescriptions{},
 		&storage.WholesalerPrice{},
 		&storage.WholesalerStock{},
 		&storage.WholesalerMedia{},
 		&storage.ProductSize{},
-		&storage.Metadata{},
 	}
 
 	for _, _migration := range migrationApply {

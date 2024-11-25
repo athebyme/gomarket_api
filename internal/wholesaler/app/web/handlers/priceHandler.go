@@ -22,6 +22,7 @@ func NewPriceHandler(connector dbconnect.Database) *PriceHandler {
 	if err != nil {
 		return nil
 	}
+
 	priceSource := storage.DataSource{
 		InfURL:           "http://sexoptovik.ru/files/all_prod_prices.inf",
 		CSVURL:           "http://sexoptovik.ru/files/all_prod_prices.csv",

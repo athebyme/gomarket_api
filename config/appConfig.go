@@ -1,6 +1,7 @@
 package config
 
 import (
+	"gomarketplace_api/config/values"
 	"gopkg.in/yaml.v3"
 	"os"
 )
@@ -12,16 +13,17 @@ type MarketplaceConfig interface {
 }
 
 type WildberriesConfig struct {
-	ApiKey   string                  `yaml:"api_key"`
-	WbValues WildberriesValuesConfig `yaml:"default_values"`
+	ApiKey   string                         `yaml:"api_key"`
+	WbValues values.WildberriesValues       `yaml:"default_values"`
+	WbBanned values.WildberriesBannedBrands `yaml:"brands"`
 }
 
 type AppConfig struct {
-	Wildberries WildberriesConfig `yaml:"wildberries"`
-	Postgres    PostgresConfig    `yaml:"postgres"`
+	Wildberries *WildberriesConfig `yaml:"wildberries"`
+	Postgres    *PostgresConfig    `yaml:"postgres"`
 }
 
-func LoadConfig(filename string) (*AppConfig, error) {
+func (c *AppConfig) LoadConfig(filename string) (*AppConfig, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err

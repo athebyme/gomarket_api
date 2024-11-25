@@ -11,4 +11,4 @@
 
 
 # игнорируем апи конфиг
-config/api_keys.yaml
+config/

@@ -19,3 +19,7 @@ func NewDescriptionsRepository(db *sql.DB, updater storage.Updater) *Description
 func (r *DescriptionsRepository) Update(args ...[]string) error {
 	return r.updater.Update(args...)
 }
+
+func (r *DescriptionsRepository) Close() error {
+	return r.db.Close()
+}

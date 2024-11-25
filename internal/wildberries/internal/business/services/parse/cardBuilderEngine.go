@@ -1,7 +1,7 @@
 package parse
 
 import (
-	"gomarketplace_api/config"
+	"gomarketplace_api/config/values"
 	"gomarketplace_api/internal/wildberries/internal/business/models/dto/response"
 	"gomarketplace_api/internal/wildberries/internal/business/services/builder"
 	"gomarketplace_api/pkg/logger"
@@ -11,7 +11,7 @@ import (
 type CardBuilderProxy struct {
 	builder builder.CreateCardBuilder
 	log     logger.Logger
-	config.WildberriesValuesConfig
+	values.WildberriesValues
 }
 
 func NewCardBuilderEngine(writer io.Writer) *CardBuilderProxy {
@@ -63,9 +63,9 @@ func (e *CardBuilderProxy) Build() (interface{}, error) {
 	defer e.builder.Clear()
 
 	e.WithDimensions(response.DimensionWrapper{
-		Length: e.ensureDimension(e.builder.Dimensions.Length, e.WildberriesValuesConfig.PackageLength),
-		Width:  e.ensureDimension(e.builder.Dimensions.Width, e.WildberriesValuesConfig.PackageWidth),
-		Height: e.ensureDimension(e.builder.Dimensions.Height, e.WildberriesValuesConfig.PackageHeight),
+		Length: e.ensureDimension(e.builder.Dimensions.Length, e.WildberriesValues.PackageLength),
+		Width:  e.ensureDimension(e.builder.Dimensions.Width, e.WildberriesValues.PackageWidth),
+		Height: e.ensureDimension(e.builder.Dimensions.Height, e.WildberriesValues.PackageHeight),
 	})
 
 	return e.builder.Build()

@@ -41,7 +41,7 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	loader := service.NewPostgresLoader(db)
 	ch := make(chan bool)
 	updater := get2.NewUpdater(loader, ch)
-	nomenclatureUpdGet := get.NewNomenclatureUpdateGetter(db, *updater, authEngine)
+	nomenclatureUpdGet := get.NewNomenclatureUpdateGetter(db, *updater, authEngine, s.writer)
 	s.cardService = update.NewCardUpdater(
 		nomenclatureUpdGet,
 		service.NewTextService(),

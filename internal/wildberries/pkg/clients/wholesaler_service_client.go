@@ -14,15 +14,17 @@ type WServiceClient struct {
 	*clients.ImageClient
 	*clients.PriceClient
 	*clients.SizesClient
+	*clients.BrandsClient
 }
 
 func NewWServiceClient(host string, writer io.Writer) *WServiceClient {
 	return &WServiceClient{
-		AppellationsClient: clients.NewAppellationsClient(host),
-		DescriptionsClient: clients.NewDescriptionsClient(host),
-		GlobalIDsClient:    clients.NewGlobalIDsClient(host),
-		ImageClient:        clients.NewImageClient(host),
-		PriceClient:        clients.NewPriceClient(host),
+		AppellationsClient: clients.NewAppellationsClient(host, writer),
+		DescriptionsClient: clients.NewDescriptionsClient(host, writer),
+		GlobalIDsClient:    clients.NewGlobalIDsClient(host, writer),
+		ImageClient:        clients.NewImageClient(host, writer),
+		PriceClient:        clients.NewPriceClient(host, writer),
 		SizesClient:        clients.NewSizesClient(host, writer),
+		BrandsClient:       clients.NewBrandsClient(host, writer),
 	}
 }

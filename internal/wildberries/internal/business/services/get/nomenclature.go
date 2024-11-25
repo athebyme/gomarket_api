@@ -12,6 +12,7 @@ import (
 	"gomarketplace_api/internal/wildberries/internal/business/models/dto/response"
 	"gomarketplace_api/internal/wildberries/internal/business/models/get"
 	"gomarketplace_api/internal/wildberries/internal/business/services"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -26,10 +27,11 @@ type NomenclatureEngine struct {
 	db            *sql.DB
 	updateService get.UpdateService
 	services.AuthEngine
+	writer io.Writer
 }
 
-func NewNomenclatureUpdateGetter(db *sql.DB, updateService get.UpdateService, auth services.AuthEngine) *NomenclatureEngine {
-	return &NomenclatureEngine{db: db, updateService: updateService, AuthEngine: auth}
+func NewNomenclatureUpdateGetter(db *sql.DB, updateService get.UpdateService, auth services.AuthEngine, writer io.Writer) *NomenclatureEngine {
+	return &NomenclatureEngine{db: db, updateService: updateService, AuthEngine: auth, writer: writer}
 }
 
 const postNomenclature = "https://content-api.wildberries.ru/content/v2/get/cards/list"
@@ -88,7 +90,7 @@ func (d *NomenclatureEngine) GetNomenclaturesWithLimitConcurrently(limit int, lo
 
 	data := sync.Map{}
 	limiter := rate.NewLimiter(rate.Limit(HtmlRequestLimit), HtmlRequestLimit)
-	client := clients.NewGlobalIDsClient("http://localhost:8081")
+	client := clients.NewGlobalIDsClient("http://localhost:8081", d.writer)
 
 	globalIDs, err := client.FetchGlobalIDs()
 	if err != nil {
@@ -223,7 +225,7 @@ func (d *NomenclatureEngine) GetNomenclaturesWithLimitConcurrentlyPutIntoChanel(
 
 	log.Printf("Getting wildberries nomenclatures with limit: %d", limit)
 
-	client := clients.NewGlobalIDsClient("http://localhost:8081")
+	client := clients.NewGlobalIDsClient("http://localhost:8081", d.writer)
 
 	globalIDs, err := client.FetchGlobalIDs()
 	if err != nil {
@@ -363,7 +365,7 @@ func (d *NomenclatureEngine) UploadToDb(settings request.Settings, locale string
 	if err != nil {
 		return updated, err
 	}
-	client := clients.NewGlobalIDsClient("http://localhost:8081")
+	client := clients.NewGlobalIDsClient("http://localhost:8081", d.writer)
 
 	// Инициализируем мапу globalIDsFromDBMap
 	globalIDsFromDB, err := client.FetchGlobalIDs()

@@ -3,17 +3,25 @@ package clients
 import (
 	"encoding/json"
 	"fmt"
+	"gomarketplace_api/pkg/logger"
+	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 )
 
 type AppellationsClient struct {
 	ApiURL string
+	log    logger.Logger
 }
 
-func (c AppellationsClient) FetchAppellations() (map[int]string, error) {
-	log.Printf("Got signal for FetchDescriptions()")
+func NewAppellationsClient(apiURL string, writer io.Writer) *AppellationsClient {
+	_log := logger.NewLogger(writer, "[WS AppellationClient]")
+
+	return &AppellationsClient{ApiURL: apiURL, log: _log}
+}
+
+func (c AppellationsClient) FetchAppellations() (map[int]interface{}, error) {
+	c.log.Log("Got signal for FetchAppellations()")
 	resp, err := http.Get(fmt.Sprintf("%s/api/appellations", c.ApiURL))
 	if err != nil {
 		return nil, err
@@ -29,14 +37,10 @@ func (c AppellationsClient) FetchAppellations() (map[int]string, error) {
 		return nil, err
 	}
 
-	var appellations map[int]string
+	var appellations map[int]interface{}
 	if err := json.Unmarshal(body, &appellations); err != nil {
 		return nil, err
 	}
 
 	return appellations, nil
-}
-
-func NewAppellationsClient(apiURL string) *AppellationsClient {
-	return &AppellationsClient{ApiURL: apiURL}
 }

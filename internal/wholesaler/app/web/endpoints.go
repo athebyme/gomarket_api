@@ -21,6 +21,8 @@ func SetupRoutes(handlers ...handlers2.Handler) {
 			handlerMap["PriceHandler"] = h
 		case *handlers2.SizeHandler:
 			handlerMap["SizeHandler"] = h
+		case *handlers2.BrandHandler:
+			handlerMap["BrandHandler"] = h
 		default:
 			log.Printf("Unknown handler type: %T", h)
 		}
@@ -58,6 +60,12 @@ func SetupRoutes(handlers ...handlers2.Handler) {
 		http.HandleFunc("/api/sizes", sizeHandler.GetSizeHandler)
 	} else {
 		log.Fatalf("SizeHandler not provided")
+	}
+
+	if brandHandler, ok := handlerMap["BrandHandler"].(*handlers2.BrandHandler); ok {
+		http.HandleFunc("/api/brands", brandHandler.GetBrandHandler)
+	} else {
+		log.Fatalf("BrandHandler not provided")
 	}
 
 	log.Printf("Запущен сервис wholesaler /api/")

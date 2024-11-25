@@ -4,18 +4,21 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"gomarketplace_api/pkg/logger"
+	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"time"
 )
 
 type ImageClient struct {
 	ApiURL string
+	log    logger.Logger
 }
 
-func NewImageClient(apiURL string) *ImageClient {
-	return &ImageClient{ApiURL: apiURL}
+func NewImageClient(apiURL string, writer io.Writer) *ImageClient {
+	_log := logger.NewLogger(writer, "[WS ImageClient]")
+	return &ImageClient{ApiURL: apiURL, log: _log}
 }
 
 type ImageRequest struct {
@@ -23,8 +26,8 @@ type ImageRequest struct {
 	Censored   bool  `json:"censored"`
 }
 
-func (c *GlobalIDsClient) FetchImages(mediaReq ImageRequest) (map[int][]string, error) {
-	log.Printf("Got signal for FetchImages()")
+func (c *ImageClient) FetchImages(mediaReq ImageRequest) (map[int][]string, error) {
+	c.log.Log("Got signal for FetchImages()")
 
 	requestBody, err := json.Marshal(mediaReq)
 	if err != nil {

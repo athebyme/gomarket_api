@@ -3,16 +3,20 @@ package business
 import (
 	"errors"
 	"gomarketplace_api/internal/wholesaler/internal/models"
-	"gomarketplace_api/internal/wholesaler/internal/storage"
-	"log"
+	"gomarketplace_api/internal/wholesaler/internal/storage/repositories"
+	"gomarketplace_api/pkg/logger"
+	"io"
 )
 
 type StockService struct {
-	repo *storage.StocksRepository
+	repo   *repositories.StocksRepository
+	logger logger.Logger
 }
 
-func NewStockService(repo *storage.StocksRepository) *StockService {
-	return &StockService{repo: repo}
+func NewStockService(repo *repositories.StocksRepository, logWriter io.Writer) *StockService {
+	_log := logger.NewLogger(logWriter, "[StockService]")
+	_log.Log("StockService successfully created.")
+	return &StockService{repo: repo, logger: _log}
 }
 
 func (s *StockService) GetProductStocksByID(id int) (*models.Stocks, error) {
@@ -29,6 +33,6 @@ func (s *StockService) GetProductStocksByID(id int) (*models.Stocks, error) {
 		return nil, errors.New("product not found")
 	}
 
-	log.Printf("Retrieved (id=%d) stocks", id)
+	s.logger.Log("Retrieved (id=%d) stocks", id)
 	return stocks, nil
 }

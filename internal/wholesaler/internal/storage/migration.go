@@ -3,6 +3,7 @@ package storage
 import (
 	"database/sql"
 	"fmt"
+	"gomarketplace_api/internal/wholesaler/internal/models"
 	"log"
 )
 
@@ -33,6 +34,7 @@ func (m *WholesalerProducts) UpMigration(db *sql.DB) error {
 		color VARCHAR(255),
 		dimension TEXT,
 		package TEXT,
+		empty VARCHAR(255),
 		media VARCHAR(255),
 		barcodes VARCHAR(255),
 		material VARCHAR(255),
@@ -67,9 +69,8 @@ func (m *WholesalerDescriptions) UpMigration(db *sql.DB) error {
 	query :=
 		`	
 			CREATE TABLE IF NOT EXISTS wholesaler.descriptions (
-			global_id INT,
+			global_id INT UNIQUE,
 			product_description TEXT,
-			product_appellation TEXT,
 			FOREIGN KEY (global_id) REFERENCES wholesaler.products(global_id)
 		);
 		`
@@ -83,6 +84,40 @@ func (m *WholesalerDescriptions) UpMigration(db *sql.DB) error {
 	}
 
 	log.Println("Migration 'wholesaler.descriptions' completed successfully.")
+	return nil
+}
+
+type WholesalerMedia struct{}
+
+func (m *WholesalerMedia) UpMigration(db *sql.DB) error {
+	var migrationExists bool
+	err := db.QueryRow("SELECT EXISTS (SELECT 1 FROM migrations.migrations WHERE name = 'wholesaler.media')").Scan(&migrationExists)
+	if err != nil {
+		return fmt.Errorf("failed to check migration status: %w", err)
+	}
+	if migrationExists {
+		log.Println("Migration 'wholesaler.descriptions' already completed. Skipping.")
+		return nil
+	}
+	query :=
+		`	
+			CREATE TABLE IF NOT EXISTS wholesaler.media (
+			global_id INT,
+			images TEXT[],
+			images_censored TEXT[],
+			FOREIGN KEY (global_id) REFERENCES wholesaler.products(global_id)
+		);
+		`
+	_, err = db.Exec(query)
+	if err != nil {
+		return fmt.Errorf("failed to create wholesaler.media table: %w", err)
+	}
+	_, err = db.Exec("INSERT INTO migrations.migrations (name, time) VALUES ('wholesaler.media', current_timestamp)")
+	if err != nil {
+		return fmt.Errorf("failed to mark wholesaler.media migration as complete: %w", err)
+	}
+
+	log.Println("Migration 'wholesaler.media' completed successfully.")
 	return nil
 }
 
@@ -101,8 +136,7 @@ func (m *WholesalerStock) UpMigration(db *sql.DB) error {
 	query :=
 		`
 		CREATE TABLE IF NOT EXISTS wholesaler.stocks (
-		    global_id INT,
-		    main_articular VARCHAR(255) NOT NULL,
+		    global_id INT UNIQUE,
 		    stocks INT,
 		    FOREIGN KEY (global_id) REFERENCES wholesaler.products(global_id)
 		);
@@ -135,7 +169,7 @@ func (m *WholesalerPrice) UpMigration(db *sql.DB) error {
 	query :=
 		`
 		CREATE TABLE IF NOT EXISTS wholesaler.price (
-		    global_id INT,
+		    global_id INT UNIQUE,
 		    price INT,
 		    FOREIGN KEY (global_id) REFERENCES wholesaler.products(global_id)
 		);
@@ -201,6 +235,45 @@ func (m *MigrationsSchema) UpMigration(db *sql.DB) error {
 	return nil
 }
 
+type Metadata struct{}
+
+// UpMigration - создает таблицу metadata, если она еще не существует.
+func (m *Metadata) UpMigration(db *sql.DB) error {
+	// Проверяем, была ли применена миграция.
+	var migrationExists bool
+	err := db.QueryRow("SELECT EXISTS (SELECT 1 FROM migrations.migrations WHERE name = 'metadata')").Scan(&migrationExists)
+	if err != nil {
+		return fmt.Errorf("failed to check migration status: %w", err)
+	}
+	if migrationExists {
+		log.Println("Migration 'metadata' already completed. Skipping.")
+		return nil
+	}
+
+	// Создаем таблицу metadata, если она еще не существует.
+	query := `
+		CREATE TABLE IF NOT EXISTS metadata (
+		    id SERIAL PRIMARY KEY,
+		    key_name VARCHAR(255) UNIQUE NOT NULL,
+		    value TEXT,
+		    last_update TIMESTAMP
+		);
+	`
+	_, err = db.Exec(query)
+	if err != nil {
+		return fmt.Errorf("failed to create metadata table: %w", err)
+	}
+
+	// Добавляем запись о миграции в таблицу migrations.
+	_, err = db.Exec("INSERT INTO migrations.migrations (name, time) VALUES ('metadata', current_timestamp)")
+	if err != nil {
+		return fmt.Errorf("failed to mark metadata migration as complete: %w", err)
+	}
+
+	log.Println("Migration 'metadata' completed successfully.")
+	return nil
+}
+
 func migrateAndParse(db *sql.DB) error {
 	var migrationExists bool
 	err := db.QueryRow("SELECT EXISTS (SELECT 1 FROM migrations.migrations WHERE name = 'wholesaler.size')").Scan(&migrationExists)
@@ -215,12 +288,6 @@ func migrateAndParse(db *sql.DB) error {
 		CREATE TABLE IF NOT EXISTS wholesaler.sizes (
 			size_id SERIAL PRIMARY KEY,
 			global_id INT,
-			length DECIMAL(10, 2),
-			depth DECIMAL(10, 2),
-			width DECIMAL(10, 2),
-			volume DECIMAL(10, 2),
-			weight DECIMAL(10, 2),
-			diameter DECIMAL(10, 2),
 			FOREIGN KEY (global_id) REFERENCES wholesaler.products(global_id)
 		);
 	`
@@ -254,8 +321,8 @@ func migrateAndParse(db *sql.DB) error {
 	defer rows.Close()
 
 	insertSizeStmt, err := db.Prepare(`
-		INSERT INTO wholesaler.sizes (global_id, length, depth, width, volume, weight, diameter)
-		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING size_id
+		INSERT INTO wholesaler.sizes (global_id)
+		VALUES ($1) RETURNING size_id
 	`)
 	if err != nil {
 		return fmt.Errorf("failed to prepare insert statement for sizes: %w", err)
@@ -294,7 +361,7 @@ func processProducts(db *sql.DB) error {
 
 	// Подготавливаем запросы *вне* цикла
 	insertSizeStmt, err := db.Prepare(
-		"INSERT INTO wholesaler.sizes (global_id, length, depth, width, volume, weight, diameter) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING size_id")
+		"INSERT INTO wholesaler.sizes (global_id) VALUES ($1) RETURNING size_id")
 	if err != nil {
 		return fmt.Errorf("failed to prepare insertSize statement: %w", err)
 	}
@@ -319,13 +386,13 @@ func processProducts(db *sql.DB) error {
 			return fmt.Errorf("failed to parse sizes for globalID %d: %w", globalID, err) // Более информативное сообщение
 		}
 
-		sizeMap := make(map[SizeDescriptorEnum]*float64)
+		sizeMap := make(map[models.SizeDescriptorEnum]*float64)
 		for _, size := range sizeDescriptors {
 			sizeMap[size.Descriptor] = &size.Value
 		}
 
 		var sizeID int
-		err = insertSizeStmt.QueryRow(globalID, sizeMap[LENGTH], sizeMap[DEPTH], sizeMap[WIDTH], sizeMap[VOLUME], sizeMap[WEIGHT], sizeMap[DIAMETER]).Scan(&sizeID)
+		err = insertSizeStmt.QueryRow(globalID).Scan(&sizeID)
 		if err != nil {
 			return fmt.Errorf("failed to insert into sizes for globalID %d: %w", globalID, err) // Более информативное сообщение
 		}

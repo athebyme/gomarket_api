@@ -1,12 +1,26 @@
 package services
 
 import (
-	"gomarketplace_api/config"
 	"net/http"
 )
 
-var apiKey = config.GetMarketplaceConfig()
+type AuthEngine interface {
+	GetApiKey() string
+	SetApiKey(request *http.Request)
+}
 
-func SetAuthorizationHeader(request *http.Request) {
-	request.Header.Set("Authorization", "Bearer "+apiKey.ApiKey)
+type BearerAuth struct {
+	apiKey string
+}
+
+func (b *BearerAuth) GetApiKey() string {
+	return b.apiKey
+}
+
+func (b *BearerAuth) SetApiKey(request *http.Request) {
+	request.Header.Set("Authorization", "Bearer "+b.apiKey)
+}
+
+func NewBearerAuth(apiKey string) *BearerAuth {
+	return &BearerAuth{apiKey: apiKey}
 }

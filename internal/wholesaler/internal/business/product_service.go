@@ -3,31 +3,16 @@ package business
 import (
 	"errors"
 	"gomarketplace_api/internal/wholesaler/internal/models"
-	"gomarketplace_api/internal/wholesaler/internal/storage"
+	"gomarketplace_api/internal/wholesaler/internal/storage/repositories"
 	"log"
 )
 
 type ProductService struct {
-	repo *storage.ProductRepository
+	repo *repositories.ProductRepository
 }
 
-func NewProductService(repo *storage.ProductRepository) *ProductService {
+func NewProductService(repo *repositories.ProductRepository) *ProductService {
 	return &ProductService{repo: repo}
-}
-
-func (s *ProductService) CreateProduct(product *models.Product) error {
-	if product.Model == "" || product.Category == "" {
-		return errors.New("model and category are required")
-	}
-
-	log.Printf("Creating product: %s", product.Model)
-
-	if err := s.repo.Insert(product); err != nil {
-		return err
-	}
-
-	log.Printf("Product created with ID: %d", product.ID)
-	return nil
 }
 
 func (s *ProductService) GetProductByID(id int) (*models.Product, error) {
@@ -75,27 +60,42 @@ func (s *ProductService) GetProductsByIDs(ids []int) ([]*models.Product, error) 
 	return products, nil
 }
 
-func (s *ProductService) UpdateProduct(product *models.Product) error {
-	if product.ID <= 0 {
-		return errors.New("invalid product ID")
+func (s *ProductService) GetAllGlobalIDs() ([]int, error) {
+	res, err := s.repo.GetGlobalIDs()
+	if err != nil {
+		return nil, err
 	}
-
-	if err := s.repo.Update(product); err != nil {
-		return err
-	}
-
-	log.Printf("Updated product with ID: %d", product.ID)
-	return nil
+	return res, nil
 }
-func (s *ProductService) DeleteProduct(id int) error {
-	if id <= 0 {
-		return errors.New("invalid product ID")
-	}
 
-	if err := s.repo.Delete(id); err != nil {
-		return err
+func (s *ProductService) GetAllAppellations() (map[int]string, error) {
+	res, err := s.repo.GetAppellations()
+	if err != nil {
+		return nil, err
 	}
+	return res, nil
+}
 
-	log.Printf("Deleted product with ID: %d", id)
-	return nil
+func (s *ProductService) GetAllDescriptions() (map[int]string, error) {
+	res, err := s.repo.GetDescriptions()
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func (s *ProductService) GetAllMediaSources(censored bool, imgSize repositories.ImageSize) (map[int][]string, error) {
+	res, err := s.repo.GetMediaSources(censored, imgSize)
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func (s *ProductService) GetAllMediaSourcesByProductIDs(globalIds []int, censored bool, imgSize repositories.ImageSize) (map[int][]string, error) {
+	res, err := s.repo.GetMediaSourcesByProductIDs(globalIds, censored, imgSize)
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
 }

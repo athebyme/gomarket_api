@@ -2,92 +2,17 @@ package storage
 
 import (
 	"fmt"
+	"gomarketplace_api/internal/wholesaler/internal/models"
 	"log"
 	"regexp"
 	"strconv"
 	"strings"
 )
 
-type Size struct {
-	Descriptor SizeDescriptorEnum
-	Type       SizeTypeEnum
-	Value      float64
-	Item       string
-	Unit       string
-}
+func ParseSizes(text string) ([]models.SizeEntity, error) {
+	result := []models.SizeEntity{}
 
-type SizeDescriptorEnum string
-type SizeTypeEnum string
-
-const (
-	LENGTH   SizeDescriptorEnum = "LENGTH"
-	DEPTH    SizeDescriptorEnum = "DEPTH"
-	WIDTH    SizeDescriptorEnum = "WIDTH"
-	VOLUME   SizeDescriptorEnum = "VOLUME"
-	WEIGHT   SizeDescriptorEnum = "WEIGHT"
-	DIAMETER SizeDescriptorEnum = "DIAMETER"
-	COMMON   SizeTypeEnum       = "COMMON"
-	MIN      SizeTypeEnum       = "MIN"
-	MAX      SizeTypeEnum       = "MAX"
-)
-
-var descriptorTranslationDict = map[string]SizeDescriptorEnum{
-	"длина":   LENGTH,
-	"глубина": DEPTH,
-	"ширина":  WIDTH,
-	"объем":   VOLUME,
-	"вес":     WEIGHT,
-	"диаметр": DIAMETER,
-}
-
-var defaultUnits = map[SizeDescriptorEnum]string{
-	LENGTH:   "cm",
-	DEPTH:    "cm",
-	WIDTH:    "cm",
-	VOLUME:   "ml",
-	WEIGHT:   "g",
-	DIAMETER: "cm",
-}
-
-var unitNormalizationMap = map[string]string{
-	"м.":          "m",
-	"м":           "m",
-	"метров":      "m",
-	"метр":        "m",
-	"метры":       "m",
-	"метр.":       "m",
-	"см":          "cm",
-	"сантиметров": "cm",
-	"сантиметр":   "cm",
-	"сантиметры":  "cm",
-	"мм":          "mm",
-	"миллиметров": "mm",
-	"миллиметр":   "mm",
-	"миллиметры":  "mm",
-	"г":           "g",
-	"гр":          "g",
-	"грамм":       "g",
-	"граммы":      "g",
-	"кг":          "kg",
-	"килограмм":   "kg",
-	"килограммы":  "kg",
-	"мл":          "ml",
-	"миллилитров": "ml",
-	"миллилитр":   "ml",
-	"миллилитры":  "ml",
-	"л":           "l",
-	"литр":        "l",
-	"литров":      "l",
-	"литры":       "l",
-}
-var typeTranslationDict = map[string]SizeTypeEnum{
-	"общий": COMMON,
-}
-
-func ParseSizes(text string) ([]Size, error) {
-	result := []Size{}
-
-	for word, descriptor := range descriptorTranslationDict {
+	for word, descriptor := range models.DescriptorTranslationDict {
 		patternStr := `(?i)` + word + `(?:.*?)(\d+[.,]?\d*)(?:\s*(?:-|до|–)\s*(\d+[.,]?\d*))?\s*([a-zA-Zа-яА-Я]+)`
 		re := regexp.MustCompile(patternStr)
 
@@ -107,7 +32,7 @@ func ParseSizes(text string) ([]Size, error) {
 			if len(match) > 3 {
 				rawUnit = match[3]
 			}
-			unit := normalizeUnit(rawUnit, unitNormalizationMap, descriptorTranslationDict[word])
+			unit := normalizeUnit(rawUnit, models.UnitNormalizationMap, models.DescriptorTranslationDict[word])
 
 			value2 := value1 // Значение по умолчанию, если диапазона нет
 			if len(match) > 2 && match[2] != "" {
@@ -123,7 +48,7 @@ func ParseSizes(text string) ([]Size, error) {
 			wordsAfterKeyword := strings.TrimSpace(strings.Replace(match[0], word, "", 1)) //обрезать слово для поиска типа по оставшейся строке. типа "до кольца", "общий" и т.д.
 
 			if wordsAfterKeyword != "" {
-				_, found := typeTranslationDict[wordsAfterKeyword]
+				_, found := models.TypeTranslationDict[wordsAfterKeyword]
 				if found {
 					item = wordsAfterKeyword
 				}
@@ -134,11 +59,11 @@ func ParseSizes(text string) ([]Size, error) {
 				key2 := fmt.Sprintf("%s-%s-%f", descriptor, unit, value2)
 
 				if _, duplicate := sizeMap[key1]; !duplicate {
-					result = append(result, Size{Descriptor: descriptor, Type: MIN, Value: value1, Item: item, Unit: unit})
+					result = append(result, models.SizeEntity{Descriptor: descriptor, Type: models.MIN, Value: value1, Item: item, Unit: unit})
 					sizeMap[key1] = true
 				}
 				if _, duplicate := sizeMap[key2]; !duplicate {
-					result = append(result, Size{Descriptor: descriptor, Type: MAX, Value: value2, Item: item, Unit: unit})
+					result = append(result, models.SizeEntity{Descriptor: descriptor, Type: models.MAX, Value: value2, Item: item, Unit: unit})
 					sizeMap[key2] = true
 				}
 
@@ -146,9 +71,9 @@ func ParseSizes(text string) ([]Size, error) {
 				sizeMap[key2] = true
 			}
 
-			parsedSize := Size{
+			parsedSize := models.SizeEntity{
 				Descriptor: descriptor,
-				Type:       typeTranslationDict[item], /* используем item */
+				Type:       models.TypeTranslationDict[item], /* используем item */
 				Value:      value1,
 				Item:       item, /* используем item */
 				Unit:       unit,
@@ -168,12 +93,12 @@ func ParseSizes(text string) ([]Size, error) {
 	return result, nil
 }
 
-func normalizeUnit(rawUnit string, unitNormalizationMap map[string]string, descriptor SizeDescriptorEnum) string {
+func normalizeUnit(rawUnit string, unitNormalizationMap map[string]string, descriptor models.SizeDescriptorEnum) string {
 	normalizedUnit, ok := unitNormalizationMap[strings.ToLower(rawUnit)]
 	if ok {
 		return normalizedUnit
 	}
-	if defaultUnit, ok := defaultUnits[descriptor]; ok {
+	if defaultUnit, ok := models.DefaultUnits[descriptor]; ok {
 		return defaultUnit
 	}
 

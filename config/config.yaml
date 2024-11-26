@@ -1,0 +1,13 @@
+wildberries:
+  default_values:
+    package-height: 10
+    package-width: 15
+    package-length: 20
+
+
+postgres:
+  host: "localhost"
+  port: 5432
+  username: "postgres"
+  password: "postgres"
+  db_name: "postgres"

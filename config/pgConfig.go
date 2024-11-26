@@ -1,31 +1,35 @@
 package config
 
 import (
-	"os"
+	"flag"
+	"fmt"
 )
 
+type DatabaseConfig interface {
+	GetConnectionString() string
+}
+
+// PostgresConfig represents the configuration needed to connect to a PostgreSQL database
 type PostgresConfig struct {
-	Host     string
-	Port     string
-	User     string
-	Password string
-	DBName   string
+	Host     string `yaml:"host"`
+	Port     string `yaml:"port"`
+	User     string `yaml:"username"`
+	Password string `yaml:"password"`
+	DBName   string `yaml:"db_name"`
 }
 
-func GetConfig() *PostgresConfig {
+func (pc *PostgresConfig) GetConnectionString() string {
+	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+		pc.Host, pc.Port, pc.User, pc.Password, pc.DBName)
+}
+
+// NewPostgresConfigFromFlags fetches the Postgres configuration using flags
+func GetPostgresConfig() *PostgresConfig {
 	return &PostgresConfig{
-		Host:     getEnv("POSTGRES_HOST", "localhost"),
-		Port:     getEnv("POSTGRES_PORT", "5432"),
-		User:     getEnv("POSTGRES_USER", "postgres"),
-		Password: getEnv("POSTGRES_PASSWORD", "postgres"),
-		DBName:   getEnv("POSTGRES_NAME", "postgres"),
+		Host:     *flag.String("POSTGRES_HOST", "localhost", "Postgres host"),
+		Port:     *flag.String("POSTGRES_PORT", "5432", "Postgres port"),
+		User:     *flag.String("POSTGRES_USER", "postgres", "Postgres user"),
+		Password: *flag.String("POSTGRES_PASSWORD", "postgres", "Postgres password"),
+		DBName:   *flag.String("POSTGRES_NAME", "postgres", "Postgres database name"),
 	}
-}
-
-func getEnv(key, defaultValue string) string {
-	value := os.Getenv(key)
-	if value == "" {
-		return defaultValue
-	}
-	return value
 }

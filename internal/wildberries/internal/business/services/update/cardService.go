@@ -1,19 +1,27 @@
 package update
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"gomarketplace_api/config"
 	"gomarketplace_api/internal/wholesaler/pkg/requests"
 	"gomarketplace_api/internal/wildberries/internal/business/models/dto/request"
+	"gomarketplace_api/internal/wildberries/internal/business/services"
 	"gomarketplace_api/internal/wildberries/internal/business/services/builder"
 	"gomarketplace_api/internal/wildberries/internal/business/services/parse"
 	clients2 "gomarketplace_api/internal/wildberries/pkg/clients"
 	"gomarketplace_api/pkg/business/service"
 	"gomarketplace_api/pkg/logger"
 	"io"
+	"io/ioutil"
+	"log"
+	"net/http"
 	"sync"
 	"time"
 )
+
+const uploadCardsUrl = "https://content-api.wildberries.ru/content/v2/cards/upload"
 
 type CardService struct {
 	cardBuilder  builder.Proxy
@@ -24,9 +32,14 @@ type CardService struct {
 
 	config.WildberriesConfig
 	logger.Logger
+	services.AuthEngine
 }
 
-func NewCardService(wsClientUrl string, textService service.ITextService, writer io.Writer, wildberriesConfig config.WildberriesConfig, nm NomenclatureService) *CardService {
+func NewCardService(
+	wsClientUrl string,
+	textService service.ITextService,
+	writer io.Writer,
+	wildberriesConfig config.WildberriesConfig) *CardService {
 	_log := logger.NewLogger(writer, "[CardService]")
 	cardBuilder := parse.NewCardBuilderEngine(writer, wildberriesConfig.WbValues)
 
@@ -37,6 +50,7 @@ func NewCardService(wsClientUrl string, textService service.ITextService, writer
 		brandService:      parse.NewBrandServiceWildberries(wildberriesConfig.WbBanned.BannedBrands),
 		wsclient:          clients2.NewWServiceClient(wsClientUrl, writer),
 		textService:       textService,
+		AuthEngine:        services.NewBearerAuth(wildberriesConfig.ApiKey),
 	}
 }
 
@@ -133,6 +147,60 @@ func (s *CardService) PrepareAndUpload(ids []int) (interface{}, error) {
 		cards = append(cards, *card.(*request.CreateCardRequestData))
 	}
 	return cards, nil
+}
+
+func (s *CardService) SendToServerModels(models interface{}) ([]byte, int, error) {
+	return s.sendToServer(uploadCardsUrl, models)
+}
+
+func (cu *CardService) sendToServer(url string, models interface{}) ([]byte, int, error) {
+	log.Printf("Sending models to server...")
+
+	requestBody, err := json.Marshal(models)
+	if err != nil {
+		return nil, 500, fmt.Errorf("failed to marshal update request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(requestBody))
+	if err != nil {
+		return nil, 500, fmt.Errorf("failed to create update request: %w", err)
+	}
+
+	requestBodySize := len(requestBody)
+	requestBodySizeMB := float64(requestBodySize) / (1 << 20)
+	log.Printf("Request Body Size: %d bytes (%.2f MB)\n", requestBodySize, requestBodySizeMB)
+
+	req.Header.Set("Content-Type", "application/json")
+	cu.SetApiKey(req)
+
+	log.Printf("Sending request body: %v", string(requestBody))
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, 500, fmt.Errorf("failed to upload models: %w", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, resp.StatusCode, fmt.Errorf("failed to read response body: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		var errorResponse map[string]interface{}
+		if err := json.Unmarshal(bodyBytes, &errorResponse); err != nil {
+			return nil, resp.StatusCode, fmt.Errorf("failed to unmarshal error response: %w", err)
+		}
+
+		errorDetails, err := json.MarshalIndent(errorResponse, "", "  ")
+		if err != nil {
+			return nil, resp.StatusCode, fmt.Errorf("failed to format error details: %w", err)
+		}
+
+		log.Printf("Upload failed with status: %d, error details: %s", resp.StatusCode, string(errorDetails))
+		return bodyBytes, resp.StatusCode, fmt.Errorf("upload failed with status: %d", resp.StatusCode)
+	}
+
+	return bodyBytes, resp.StatusCode, nil
 }
 
 func (s *CardService) filterAppellations(ids []int) (map[int]interface{}, error) {
@@ -245,7 +313,7 @@ func (s *CardService) filterBrands(ids []int) (map[int]interface{}, error) {
 			switch brand.(type) {
 			case string:
 				strBrand := brand.(string)
-				if s.brandService.IsBanned(strBrand) {
+				if s.brandService.IsBanned(strBrand) || strBrand == "" {
 					continue
 				}
 				filtered[id] = brand.(string)

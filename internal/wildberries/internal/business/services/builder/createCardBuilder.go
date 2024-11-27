@@ -63,6 +63,9 @@ func (b *CreateCardBuilder) Build() (interface{}, error) {
 		Sizes:           b.Sizes,
 		Characteristics: b.Characteristics,
 	}
+	if card.Characteristics == nil {
+		card.Characteristics = []response.CharcWrapper{}
+	}
 	if err := card.Validate(); err != nil {
 		return nil, err
 	}

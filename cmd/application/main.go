@@ -33,9 +33,18 @@ func main() {
 	synchronize := make(chan struct{}, 1)
 
 	writer := os.Stdout
+	wg.Add(1)
 
-	wg.Add(3)
+	go func() {
+		con := postgres.NewPgConnector(pgConfig)
+		wserver := wsapp.NewWServer(con)
+		wserver.Run(&synchronize)
+		wg.Done()
+	}()
 
+	wg.Wait()
+
+	wg.Add(1)
 	go func() {
 		con := postgres.NewPgConnector(pgConfig)
 		handler := handlers.NewProductHandler(con)
@@ -43,15 +52,13 @@ func main() {
 		priceHandler := handlers.NewPriceHandler(con)
 		sizeHandler := handlers.NewSizeHandler(con, writer)
 		brandHandler := handlers.NewBrandHandler(con, writer)
+		wg.Done()
 		web.SetupRoutes(handler, mediaHandler, priceHandler, sizeHandler, brandHandler)
-		wg.Done()
 	}()
-	go func() {
-		con := postgres.NewPgConnector(pgConfig)
-		wserver := wsapp.NewWServer(con)
-		wserver.Run(&synchronize)
-		wg.Done()
-	}()
+
+	wg.Wait()
+
+	wg.Add(1)
 	go func() {
 		con := postgres.NewPgConnector(pgConfig)
 		wbserver := wbapp.NewWbServer(con, *wbConfig, writer)
@@ -59,5 +66,6 @@ func main() {
 		wg.Done()
 	}()
 	wg.Wait()
+
 	os.Exit(0)
 }

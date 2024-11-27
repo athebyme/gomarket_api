@@ -72,7 +72,7 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	//_, err = s.nomenclatureService.UpdateDBNomenclatures(request.Settings{
 	//	Sort:   request.Sort{Ascending: false},
 	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-	//	Cursor: request.Cursor{Limit: 15000},
+	//	Cursor: request.Cursor{Limit: 16000},
 	//}, "")
 	//if err != nil {
 	//	return
@@ -114,10 +114,10 @@ func (s *WildberriesServer) uploadProducts(auth services.AuthEngine) interface{}
 	repo := storage.NewNomenclatureRepository(db)
 
 	nmService := update.NewNomenclatureService(*engine, *repo)
-	cardService := update.NewCardService(wsUrl, textService, s.writer, s.WildberriesConfig, *nmService)
+	cardService := update.NewCardService(wsUrl, textService, s.writer, s.WildberriesConfig)
 
 	accuracy := float32(0.3)
-	categoryID := 0
+	categoryID := 5090
 	result, err := nmService.GetSetOfUncreatedItemsWithCategories(accuracy, true, categoryID)
 
 	ids := make([]int, len(result))
@@ -130,7 +130,19 @@ func (s *WildberriesServer) uploadProducts(auth services.AuthEngine) interface{}
 		return nil
 	}
 
-	s.log.Log("Total count of items : %d", len(resultIDs.([]int)))
+	req := request.CreateCardRequestWrapper{}
+	for _, v := range resultIDs.([]request.CreateCardRequestData) {
+		req.Variants = append(req.Variants, v)
+		req.SubjectID = categoryID
+		break
+	}
+
+	_, _, err = cardService.SendToServerModels(req)
+	if err != nil {
+		return nil
+	}
+
+	s.log.Log("Total count of items : %d", len(resultIDs.([]request.CreateCardRequestData)))
 	return struct{}{}
 }
 

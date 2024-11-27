@@ -15,9 +15,9 @@ type CreateCardRequestData struct {
 	Characteristics []response.CharcWrapper   `json:"characteristics"`
 }
 
-type CreateCardResponseWrapper struct {
-	Variants  []Variants `json:"variants"`
-	SubjectID int        `json:"subjectId"`
+type CreateCardRequestWrapper struct {
+	Variants  []CreateCardRequestData `json:"variants"`
+	SubjectID int                     `json:"subjectId"`
 }
 
 func (req *CreateCardRequestData) Validate() error {

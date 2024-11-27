@@ -208,7 +208,7 @@ func (d *NomenclatureEngine) UploadToDb(settings request.Settings, locale string
 	updated := 0
 	responseLimiter := rate.NewLimiter(rate.Every(time.Minute/50), 50)
 	wg := sync.WaitGroup{}
-
+	var mu sync.Mutex
 	// Получаем существующие номенклатуры из БД
 	existIDs, err := d.GetDBNomenclatures()
 	if err != nil {
@@ -249,23 +249,32 @@ func (d *NomenclatureEngine) UploadToDb(settings request.Settings, locale string
 			saw++
 			id, err := nomenclature.GlobalID()
 			if err != nil {
+				mu.Lock()
 				errors[id] = fmt.Sprintf("ID: %d -- Nomenclature upload failed: %s", nomenclature.VendorCode, err)
+				mu.Unlock()
 				continue
 			}
 			if _, ok := globalIDsFromDBMap[id]; !ok {
+				mu.Lock()
 				errors[id] = fmt.Sprintf("ID: %d -- GlobalIDMap not contains this id: %s", nomenclature.VendorCode, err)
+				mu.Unlock()
 				continue
 			}
 			if _, ok := existIDs[id]; ok {
 				continue
 			}
+
+			mu.Lock()
 			uploadPacket = append(uploadPacket, id, nomenclature.NmID, nomenclature.ImtID,
 				nomenclature.NmUUID, nomenclature.VendorCode, nomenclature.SubjectID,
 				nomenclature.Brand, nomenclature.CreatedAt, nomenclature.UpdatedAt)
+			mu.Unlock()
 
 			if len(uploadPacket)/9 == 100 {
 				loadingChan <- uploadPacket
+				mu.Lock()
 				uploadPacket = []interface{}{}
+				mu.Unlock()
 			}
 		}
 	}()
@@ -302,36 +311,46 @@ func (d *NomenclatureEngine) UploadToDb(settings request.Settings, locale string
 }
 
 func (d *NomenclatureEngine) insertBatchNomenclatures(batch []interface{}) error {
-	query := `
-		INSERT INTO wildberries.nomenclatures (global_id, nm_id, imt_id, nm_uuid, vendor_code, subject_id, wb_brand, created_at, updated_at)
-		VALUES `
-
-	// Строим запрос со значениями
+	// Строим часть запроса для вставки данных
 	valueStrings := []string{}
 	for i := 0; i < len(batch)/9; i++ {
-		valueStrings = append(valueStrings, fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)", i*9+1, i*9+2, i*9+3, i*9+4, i*9+5, i*9+6, i*9+7, i*9+8, i*9+9))
+		valueStrings = append(valueStrings, fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)",
+			i*9+1, i*9+2, i*9+3, i*9+4, i*9+5, i*9+6, i*9+7, i*9+8, i*9+9))
 	}
 
-	query += strings.Join(valueStrings, ", ")
-	/*
-		нужна проверка на то, что добавляемый global_id точно есть в таблице wholesaler.products иначе вылетит паника
-		2024-10-28 08:40:27.585 UTC [68] DETAIL:  Key (global_id)=(25268) is not present in table "products".
-	*/
-	query += `
+	// Полный SQL-запрос
+	query := fmt.Sprintf(`
+		INSERT INTO wildberries.nomenclatures (global_id, nm_id, imt_id, nm_uuid, vendor_code, subject_id, wb_brand, created_at, updated_at)
+		VALUES 
+			%s
 		ON CONFLICT (global_id) DO UPDATE
-		SET nm_id = EXCLUDED.nm_id,
+		SET 
+			nm_id = EXCLUDED.nm_id,
 			imt_id = EXCLUDED.imt_id,
 			nm_uuid = EXCLUDED.nm_uuid,
 			vendor_code = EXCLUDED.vendor_code,
 			subject_id = EXCLUDED.subject_id,
 			wb_brand = EXCLUDED.wb_brand,
-			created_at = EXCLUDED.created_at,
-			updated_at = EXCLUDED.updated_at;
-	`
+			created_at = LEAST(nomenclatures.created_at, EXCLUDED.created_at),
+			updated_at = GREATEST(nomenclatures.updated_at, EXCLUDED.updated_at);
+	`, strings.Join(valueStrings, ", "))
 
 	// Выполняем запрос с батчем параметров
-	_, err := d.db.Exec(query, batch...)
+	_, err := d.db.Exec(query, removeDuplicates(batch)...)
 	return err
+}
+func removeDuplicates(batch []interface{}) []interface{} {
+	seen := make(map[interface{}]bool)
+	uniqueBatch := []interface{}{}
+
+	for _, entry := range batch {
+		if _, exists := seen[entry]; !exists {
+			seen[entry] = true
+			uniqueBatch = append(uniqueBatch, entry)
+		}
+	}
+
+	return uniqueBatch
 }
 
 func (d *NomenclatureEngine) GetDBNomenclatures() (map[int]struct{}, error) {

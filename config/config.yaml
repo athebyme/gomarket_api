@@ -3,11 +3,37 @@ wildberries:
     package-height: 10
     package-width: 15
     package-length: 20
-
+  brands:
+    banned:
+      - GVIBE
+      - HOT
+      - HOT PRODUCTION
+      - INDEEP
+      - JUJU
+      - JULEJU
+      - LELO
+      - LOLA GAMES
+      - LOLA TOYS
+      - LOVENSE
+      - MY.SIZE
+      - ON
+      - PLEASURE LAB
+      - Prime Products
+      - RUF
+      - SEXY LIFE
+      - SHIATSU
+      - VIAMAX INTERNATIONAL
+      - VITALIS
+      - WE-VIBE
+      - Молот Тора
+      - Товары без упаковки
+      - ФЛЕШНАШ
+  identity:
+    code : 1277
 
 postgres:
   host: "localhost"
-  port: 5432
+  port: 5433
   username: "postgres"
   password: "postgres"
   db_name: "postgres"

@@ -68,7 +68,7 @@ func (s *ProductService) GetAllGlobalIDs() ([]int, error) {
 	return res, nil
 }
 
-func (s *ProductService) GetAllAppellations() (map[int]string, error) {
+func (s *ProductService) GetAllAppellations() (map[int]interface{}, error) {
 	res, err := s.repo.GetAppellations()
 	if err != nil {
 		return nil, err
@@ -76,8 +76,24 @@ func (s *ProductService) GetAllAppellations() (map[int]string, error) {
 	return res, nil
 }
 
-func (s *ProductService) GetAllDescriptions() (map[int]string, error) {
-	res, err := s.repo.GetDescriptions()
+func (s *ProductService) GetAllAppellationsByIDs(ids []int) (map[int]interface{}, error) {
+	res, err := s.repo.GetAppellationsByIDs(ids)
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func (s *ProductService) GetAllDescriptions(includeEmpty bool) (map[int]interface{}, error) {
+	res, err := s.repo.GetDescriptions(includeEmpty)
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func (s *ProductService) GetAllDescriptionsByIDs(ids []int, includeEmpty bool) (map[int]interface{}, error) {
+	res, err := s.repo.GetDescriptionsByIDs(ids, includeEmpty)
 	if err != nil {
 		return nil, err
 	}

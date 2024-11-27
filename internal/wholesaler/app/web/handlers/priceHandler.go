@@ -3,9 +3,9 @@ package handlers
 import (
 	"encoding/json"
 	"gomarketplace_api/internal/wholesaler/internal/business"
-	"gomarketplace_api/internal/wholesaler/internal/models/requests"
 	"gomarketplace_api/internal/wholesaler/internal/storage"
 	"gomarketplace_api/internal/wholesaler/internal/storage/repositories"
+	"gomarketplace_api/internal/wholesaler/pkg/requests"
 	"gomarketplace_api/pkg/dbconnect"
 	"log"
 	"net/http"
@@ -76,7 +76,7 @@ func (h *PriceHandler) GetPriceHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		response, err = h.GetPriceById(priceRequest.ProductIDs[0])
+		response, err = h.GetPricesById(priceRequest.ProductIDs)
 		if err != nil {
 			http.Error(w, "Failed to fetch media sources", http.StatusInternalServerError)
 			return

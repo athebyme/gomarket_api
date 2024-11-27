@@ -24,8 +24,8 @@ func NewCategoriesService(auth services.AuthEngine) *CategoriesEngine {
 
 const categoriesUrl = "https://content-api.wildberries.ru/content/v2/object/all"
 
-// GetCategories запрашивает категории с указанными параметрами: имя, локаль, лимит, смещение и идентификатор родителя.
-func (s *CategoriesEngine) GetCategories(name, locale string, limit, offset, parentID int) (*responses.CategoryResponse, error) {
+// GetCategoriesRequestWildberries запрашивает категории с указанными параметрами: имя, локаль, лимит, смещение и идентификатор родителя.
+func (s *CategoriesEngine) GetCategoriesRequestWildberries(name, locale string, limit, offset, parentID int) (*responses.CategoryResponse, error) {
 	// Формируем URL с параметрами
 	url, err := buildCategoriesURL(locale, limit, offset, parentID)
 	if err != nil {

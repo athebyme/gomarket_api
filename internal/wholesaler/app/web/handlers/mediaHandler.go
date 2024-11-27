@@ -2,9 +2,9 @@ package handlers
 
 import (
 	"encoding/json"
-	"gomarketplace_api/internal/wholesaler/internal/models/requests"
 	"gomarketplace_api/internal/wholesaler/internal/storage"
 	"gomarketplace_api/internal/wholesaler/internal/storage/repositories"
+	"gomarketplace_api/internal/wholesaler/pkg/requests"
 	"gomarketplace_api/pkg/dbconnect"
 	"log"
 	"net/http"

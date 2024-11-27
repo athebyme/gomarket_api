@@ -11,7 +11,7 @@ type CreateCardRequestData struct {
 	Description     string                    `json:"description"`
 	VendorCode      string                    `json:"vendorCode"`
 	Dimensions      response.DimensionWrapper `json:"dimensions"`
-	Sizes           []response.Size           `json:"sizes"`
+	Sizes           response.SizeWrapper      `json:"sizes"`
 	Characteristics []response.CharcWrapper   `json:"characteristics"`
 }
 
@@ -30,8 +30,8 @@ func (req *CreateCardRequestData) Validate() error {
 	if req.Description == "" {
 		return errors.New("description is required")
 	}
-	if len(req.Sizes) == 0 {
-		return errors.New("sizes is required")
+	if req.Sizes.Price == 0 {
+		return errors.New("price is required")
 	}
 	if req.VendorCode == "" {
 		return errors.New("vendorCode is required")

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/lib/pq"
 	"gomarketplace_api/internal/wholesaler/internal/models"
 	"gomarketplace_api/internal/wholesaler/internal/storage"
 	"log"
@@ -65,6 +66,55 @@ func (r *PriceRepository) GetPrices() (map[int]int, error) {
 	}
 
 	return prices, nil
+}
+
+func (r *PriceRepository) GetPricesById(ids []int) (map[int]interface{}, error) {
+	query := `
+				SELECT global_id, price FROM wholesaler.price
+				WHERE global_id = ANY($1)
+			 `
+	rows, err := r.db.Query(query, pq.Array(ids))
+	if err != nil {
+		return nil, fmt.Errorf("ошибка выполнения запроса для получения prices: %w", err)
+	}
+	defer rows.Close()
+
+	prices := make(map[int]interface{})
+	for rows.Next() {
+		var globalId int
+		var price int
+		if err := rows.Scan(&globalId, &price); err != nil {
+			return nil, fmt.Errorf("ошибка сканирования prices: %w", err)
+		}
+		prices[globalId] = price
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ошибка при итерации по строкам: %w", err)
+	}
+
+	return prices, nil
+}
+
+func (r *PriceRepository) GetPriceById(id int) (float32, error) {
+	query := `
+		SELECT price 
+		FROM wholesaler.price
+		WHERE global_id = $1
+	`
+	// Выполнение запроса
+	row := r.db.QueryRow(query, id)
+
+	var price float32
+	// Сканируем единственное значение
+	if err := row.Scan(&price); err != nil {
+		if err == sql.ErrNoRows {
+			return 0.0, fmt.Errorf("price not found for global_id: %d", id)
+		}
+		return 0.0, fmt.Errorf("error fetching price for global_id %d: %w", id, err)
+	}
+
+	return price, nil
 }
 
 func (repo *PriceRepository) Update(args ...[]string) error {

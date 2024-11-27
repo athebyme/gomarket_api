@@ -33,3 +33,18 @@ func (s *SizeService) GetSizes() (map[int][]models.SizeWrapper, error) {
 
 	return sizeMap, nil
 }
+
+func (s *SizeService) GetSizesByIDs(ids []int) (map[int][]models.SizeWrapper, error) {
+	sizeData, err := s.repo.GetSizesByIDs(ids)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка получения размеров из репозитория: %w", err)
+	}
+
+	// Преобразуем в map[int][]models.SizeWrapper
+	sizeMap := make(map[int][]models.SizeWrapper)
+	for _, data := range sizeData {
+		sizeMap[data.GlobalID] = append(sizeMap[data.GlobalID], data.Sizes...)
+	}
+
+	return sizeMap, nil
+}

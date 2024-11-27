@@ -52,7 +52,6 @@ func main() {
 		wserver.Run(&synchronize)
 		wg.Done()
 	}()
-	wg.Wait()
 	go func() {
 		con := postgres.NewPgConnector(pgConfig)
 		wbserver := wbapp.NewWbServer(con, *wbConfig, writer)

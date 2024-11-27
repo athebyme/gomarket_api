@@ -11,7 +11,7 @@ type CreateCardBuilder struct {
 	Description     string
 	VendorCode      string
 	Dimensions      response.DimensionWrapper
-	Sizes           []response.Size
+	Sizes           response.SizeWrapper
 	Characteristics []response.CharcWrapper
 }
 
@@ -43,7 +43,7 @@ func (b *CreateCardBuilder) WithDimensionWrapper(dimensions response.DimensionWr
 	b.Dimensions = dimensions
 	return b
 }
-func (b *CreateCardBuilder) WithSizes(sizes []response.Size) *CreateCardBuilder {
+func (b *CreateCardBuilder) WithSizes(sizes response.SizeWrapper) *CreateCardBuilder {
 	b.Sizes = sizes
 	return b
 }
@@ -75,6 +75,6 @@ func (b *CreateCardBuilder) Clear() {
 	b.Description = ""
 	b.VendorCode = ""
 	b.Dimensions = response.DimensionWrapper{}
-	b.Sizes = []response.Size{}
+	b.Sizes = response.SizeWrapper{}
 	b.Characteristics = []response.CharcWrapper{}
 }

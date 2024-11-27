@@ -36,8 +36,24 @@ func (e *PriceEngine) GetPrices(all bool) (interface{}, error) {
 	return prices, nil
 }
 
-func (e *PriceEngine) GetPriceById(id int) (float32, error) {
-	return e.GetPriceById(id)
+func (e *PriceEngine) GetPriceById(id int) (int, error) {
+	repoPrice, err := e.repo.GetPriceById(id)
+	if err != nil {
+		return 0, err
+	}
+	return e.CalculatePrices(int(repoPrice)).Z, nil
+}
+
+func (e *PriceEngine) GetPricesById(ids []int) (map[int]interface{}, error) {
+	repoPrices, err := e.repo.GetPricesById(ids)
+	if err != nil {
+		return nil, err
+	}
+	prices := make(map[int]interface{}, len(ids))
+	for id, price := range repoPrices {
+		prices[id] = e.CalculatePrices(price.(int))
+	}
+	return prices, nil
 }
 
 type PriceResult struct {
@@ -59,7 +75,7 @@ var (
 	MIN_S                    = 55.0
 	MAX_S                    = 205.0
 	MAX_U_COEFFICIENT        = 0.5
-	Q_COEFFICIENT            = 1.01
+	Q_COEFFICIENT            = 1.1
 	T_MIN                    = 20.0
 	T_MAX                    = 500.0
 	DIVISION_ROUNDING        = 100.0
@@ -123,7 +139,9 @@ func getDValue(P float64) (int, error) {
 
 func calculateQ(P float64) float64 {
 	D, _ := getDValue(P)
-	Q := math.Ceil(P*float64(D)/100 + rand.Float64()*Q_COEFFICIENT)
+	randomFactor := float64(rand.Intn(10) + 1)
+
+	Q := math.Ceil(P*float64(D)/100 + randomFactor)
 	if Q < MIN_Q {
 		return MIN_Q
 	}
@@ -131,7 +149,7 @@ func calculateQ(P float64) float64 {
 }
 
 func calculateR(P, Q float64) float64 {
-	return math.Round((P+Q+55+20)*100/(100-23)*DIVISION_ROUNDING) / DIVISION_ROUNDING
+	return math.Round(((P+Q+55+20)*100/(100-23))*DIVISION_ROUNDING) / DIVISION_ROUNDING
 }
 
 func calculateS(R float64) float64 {

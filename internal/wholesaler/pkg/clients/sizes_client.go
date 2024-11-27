@@ -1,9 +1,9 @@
 package clients
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"gomarketplace_api/internal/wholesaler/internal/models"
 	"gomarketplace_api/pkg/logger"
 	"io"
 	"io/ioutil"
@@ -15,24 +15,42 @@ type SizesClient struct {
 	logger logger.Logger
 }
 
-func (c *SizesClient) FetchSizes() (map[int][]models.SizeWrapper, error) {
+func (c *SizesClient) FetchSizes(requestBody interface{}) (map[int][]interface{}, error) {
 	c.logger.Log("Got signal for FetchSizes()")
-	resp, err := http.Get(fmt.Sprintf("%s/api/sizes", c.ApiURL))
+
+	// Преобразуем requestBody в JSON
+	requestBodyBytes, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
+	// Создаём HTTP-запрос с телом
+	req, err := http.NewRequest("POST", fmt.Sprintf("%s/api/sizes", c.ApiURL), bytes.NewBuffer(requestBodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Отправляем запрос
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
+	// Проверяем статус код ответа
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to fetch Sizes, status code: %d", resp.StatusCode)
 	}
 
+	// Читаем тело ответа
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
 
-	var sizes map[int][]models.SizeWrapper
+	// Парсим JSON-ответ
+	var sizes map[int][]interface{}
 	if err := json.Unmarshal(body, &sizes); err != nil {
 		return nil, err
 	}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"golang.org/x/time/rate"
 	"gomarketplace_api/internal/wholesaler/pkg/clients"
+	"gomarketplace_api/internal/wholesaler/pkg/requests"
 	"gomarketplace_api/internal/wildberries/internal/business/models/dto/request"
 	"gomarketplace_api/internal/wildberries/internal/business/models/dto/response"
 	models "gomarketplace_api/internal/wildberries/internal/business/models/get"
@@ -26,15 +27,15 @@ import (
 	"time"
 )
 
-type CardUpdater struct {
+type CardUpdateService struct {
 	nomenclatureService get.NomenclatureEngine
 	wsclient            *clients2.WServiceClient
 	textService         service.ITextService
 	services.AuthEngine
 }
 
-func NewCardUpdater(nservice *get.NomenclatureEngine, textService service.ITextService, wsClientUrl string, auth services.AuthEngine, writer io.Writer) *CardUpdater {
-	return &CardUpdater{
+func NewCardUpdateService(nservice *get.NomenclatureEngine, textService service.ITextService, wsClientUrl string, auth services.AuthEngine, writer io.Writer) *CardUpdateService {
+	return &CardUpdateService{
 		nomenclatureService: *nservice,
 		wsclient:            clients2.NewWServiceClient(wsClientUrl, writer),
 		textService:         textService,
@@ -50,7 +51,7 @@ var updatedCount atomic.Int32
 func UpdateCards() (int, error) {
 	panic("TO DO")
 }
-func (cu *CardUpdater) UpdateCardNaming(settings request.Settings) (int, error) {
+func (cu *CardUpdateService) UpdateCardNaming(settings request.Settings) (int, error) {
 	const UPLOAD_SIZE = 2000
 	const MaxBatchSize = 1 << 20 // 1 MB
 	const GOROUTINE_COUNT = 5
@@ -62,16 +63,17 @@ func (cu *CardUpdater) UpdateCardNaming(settings request.Settings) (int, error) 
 	var goroutinesNmsCount atomic.Int32
 
 	log.Println("Fetching filterAppellations...")
-	appellationsMap, err := cu.wsclient.FetchAppellations()
+	appellationsMap, err := cu.wsclient.FetchAppellations(requests.AppellationsRequest{FilterRequest: requests.FilterRequest{ProductIDs: []int{}}})
 	if err != nil {
 		return 0, fmt.Errorf("error fetching filterAppellations: %w", err)
 	}
 
 	log.Println("Fetching descriptions...")
-	descriptionsMap, err := cu.wsclient.FetchDescriptions()
+	descriptionsMap, err := cu.wsclient.FetchDescriptions(requests.AppellationsRequest{FilterRequest: requests.FilterRequest{ProductIDs: []int{}}})
 	if err != nil {
 		return 0, fmt.Errorf("error fetching descriptions: %w", err)
 	}
+
 	var processWg sync.WaitGroup
 	var uploadWg sync.WaitGroup
 	var mu sync.Mutex
@@ -182,7 +184,7 @@ func (cu *CardUpdater) UpdateCardNaming(settings request.Settings) (int, error) 
 
 const updateCardsMediaUrl = "https://content-api.wildberries.ru/content/v3/media/save"
 
-func (cu *CardUpdater) UpdateCardMedia(settings request.Settings) (int, error) {
+func (cu *CardUpdateService) UpdateCardMedia(settings request.Settings) (int, error) {
 	const GOROUTINE_COUNT = 5
 	const REQUEST_RATE_LIMIT = 70 // 100 запросов в минуту = max
 	const UPLOAD_RATE_LIMIT = 70
@@ -286,7 +288,11 @@ func (cu *CardUpdater) UpdateCardMedia(settings request.Settings) (int, error) {
 	return updatedCount, nil
 }
 
-func (cu *CardUpdater) processAndUpload(url string, data interface{}) (int, error) {
+func (cu *CardUpdateService) UpdateDBNomenclatures(settings request.Settings, locale string) (int, error) {
+	return cu.nomenclatureService.UploadToDb(settings, locale)
+}
+
+func (cu *CardUpdateService) processAndUpload(url string, data interface{}) (int, error) {
 	bodyBytes, statusCode, err := cu.uploadModels(url, data)
 	if err != nil {
 		if statusCode != http.StatusOK && bodyBytes != nil {
@@ -314,7 +320,7 @@ func (cu *CardUpdater) processAndUpload(url string, data interface{}) (int, erro
 	return cu.getDataLength(data), nil
 }
 
-func (cu *CardUpdater) getDataLength(data interface{}) int {
+func (cu *CardUpdateService) getDataLength(data interface{}) int {
 	// Проверяем, является ли data срезом
 	switch v := data.(type) {
 	case []interface{}:
@@ -327,7 +333,7 @@ func (cu *CardUpdater) getDataLength(data interface{}) int {
 	}
 }
 
-func (cu *CardUpdater) uploadModels(url string, models interface{}) ([]byte, int, error) {
+func (cu *CardUpdateService) uploadModels(url string, models interface{}) ([]byte, int, error) {
 	log.Printf("Sending models to server...")
 
 	requestBody, err := json.Marshal(models)
@@ -377,7 +383,7 @@ func (cu *CardUpdater) uploadModels(url string, models interface{}) ([]byte, int
 	return bodyBytes, resp.StatusCode, nil
 }
 
-func (cu *CardUpdater) filterOutBannedModels(data interface{}, bannedArticles []string) []interface{} {
+func (cu *CardUpdateService) filterOutBannedModels(data interface{}, bannedArticles []string) []interface{} {
 	bannedSet := make(map[string]struct{}, len(bannedArticles))
 	for _, article := range bannedArticles {
 		bannedSet[article] = struct{}{}

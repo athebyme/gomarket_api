@@ -1,6 +1,5 @@
 package requests
 
-type PriceRequest struct {
+type FilterRequest struct {
 	ProductIDs []int `json:"productIDs"`
-	All        bool  `json:"all"`
 }

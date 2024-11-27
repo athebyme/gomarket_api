@@ -6,6 +6,7 @@ import (
 	"gomarketplace_api/internal/wholesaler/internal/business"
 	"gomarketplace_api/internal/wholesaler/internal/storage"
 	"gomarketplace_api/internal/wholesaler/internal/storage/repositories"
+	"gomarketplace_api/internal/wholesaler/pkg/requests"
 	"gomarketplace_api/pkg/dbconnect"
 	"log"
 	"net/http"
@@ -99,7 +100,18 @@ func (h *ProductHandler) GetAppellationHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	appellations, err := h.productService.GetAllAppellations()
+	var appellReq requests.AppellationsRequest
+	if err = json.NewDecoder(r.Body).Decode(&appellReq); err != nil {
+		http.Error(w, "Failed to fetch Appellations", http.StatusInternalServerError)
+	}
+
+	var appellations map[int]interface{}
+	if len(appellReq.ProductIDs) == 0 {
+		appellations, err = h.productService.GetAllAppellations()
+	} else {
+		appellations, err = h.productService.GetAllAppellationsByIDs(appellReq.ProductIDs)
+
+	}
 	if err != nil {
 		http.Error(w, "Failed to fetch Global IDs", http.StatusInternalServerError)
 		return
@@ -121,9 +133,19 @@ func (h *ProductHandler) GetDescriptionsHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// update
+	var descReq requests.DescriptionRequest
+	if err = json.NewDecoder(r.Body).Decode(&descReq); err != nil {
+		http.Error(w, "Failed to fetch Descriptions", http.StatusInternalServerError)
+	}
 
-	descriptions, err := h.productService.GetAllDescriptions()
+	var descriptions map[int]interface{}
+
+	if len(descReq.ProductIDs) == 0 {
+		descriptions, err = h.productService.GetAllDescriptions(descReq.IncludeEmptyDescriptions)
+	} else {
+		descriptions, err = h.productService.GetAllDescriptionsByIDs(descReq.ProductIDs, descReq.IncludeEmptyDescriptions)
+	}
+
 	if err != nil {
 		http.Error(w, "Failed to fetch Global IDs", http.StatusInternalServerError)
 		return

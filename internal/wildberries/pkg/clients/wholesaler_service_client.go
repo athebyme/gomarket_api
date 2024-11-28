@@ -15,6 +15,7 @@ type WServiceClient struct {
 	*clients.PriceClient
 	*clients.SizesClient
 	*clients.BrandsClient
+	*clients.BarcodesClient
 }
 
 func NewWServiceClient(host string, writer io.Writer) *WServiceClient {
@@ -26,5 +27,6 @@ func NewWServiceClient(host string, writer io.Writer) *WServiceClient {
 		PriceClient:        clients.NewPriceClient(host, writer),
 		SizesClient:        clients.NewSizesClient(host, writer),
 		BrandsClient:       clients.NewBrandsClient(host, writer),
+		BarcodesClient:     clients.NewBarcodesClient(host, writer),
 	}
 }

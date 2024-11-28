@@ -209,13 +209,16 @@ func (r *ProductRepository) GetMediaSourceByProductID(productID int, censored bo
 
 	if censored {
 		format = "https://x-story.ru/mp/_project/img_sx0_%d/%d_%s_%d.jpg"
+		for i, sourceKey := range sourceKeys {
+			mediaUrls[i] = fmt.Sprintf(format, imageSize, productID, sourceKey, imageSize)
+		}
 	} else {
-		format = "https://x-story.ru/mp/_project/img_sx_%d/%d_%s_%d.jpg"
+		format = "http://sexoptovik.ru/_project/user_images/prods_res/%d/%d_%s_%d.jpg"
+		for i, sourceKey := range sourceKeys {
+			mediaUrls[i] = fmt.Sprintf(format, productID, productID, sourceKey, imageSize)
+		}
 	}
 
-	for i, sourceKey := range sourceKeys {
-		mediaUrls[i] = fmt.Sprintf(format, imageSize, productID, sourceKey, imageSize)
-	}
 	return mediaUrls, nil
 }
 
@@ -228,28 +231,6 @@ func (r *ProductRepository) GetMediaSourcesByProductIDs(productIDs []int, censor
 			return nil, err
 		}
 	}
-	return mediaMap, nil
-}
-
-func (r *ProductRepository) GetBarcodesByProductIDs(ids []int) (map[int]interface{}, error) {
-	query := `SELECT global_id, barcodes FROM wholesaler.products WHERE global_id=ANY($1)`
-
-	rows, err := r.db.Query(query, pq.Array(ids))
-	if err != nil {
-		return nil, fmt.Errorf("ошибка выполнения запроса для получения globalIDs: %w", err)
-	}
-	defer rows.Close()
-
-	mediaMap := make(map[int]interface{})
-	for rows.Next() {
-		var globalId int
-		var barcodes string
-		if err := rows.Scan(&globalId, &barcodes); err != nil {
-			return nil, fmt.Errorf("ошибка сканирования globalID: %w", err)
-		}
-		mediaMap[globalId] = strings.Split(barcodes, "#")
-	}
-
 	return mediaMap, nil
 }
 

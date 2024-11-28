@@ -311,46 +311,67 @@ func (d *NomenclatureEngine) UploadToDb(settings request.Settings, locale string
 }
 
 func (d *NomenclatureEngine) insertBatchNomenclatures(batch []interface{}) error {
-	// Строим часть запроса для вставки данных
-	valueStrings := []string{}
-	for i := 0; i < len(batch)/9; i++ {
-		valueStrings = append(valueStrings, fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)",
-			i*9+1, i*9+2, i*9+3, i*9+4, i*9+5, i*9+6, i*9+7, i*9+8, i*9+9))
-	}
+	// Максимальное количество записей в одной пачке
+	const maxBatchSize = 900 // 900 записей = 8100 параметров (по 9 параметров на запись)
+	batch = removeDuplicateRecords(batch)
+	// Разделение на подмассивы
+	for start := 0; start < len(batch); start += maxBatchSize * 9 {
+		end := start + maxBatchSize*9
+		if end > len(batch) {
+			end = len(batch) // Учитываем остаток
+		}
 
-	// Полный SQL-запрос
-	query := fmt.Sprintf(`
-		INSERT INTO wildberries.nomenclatures (global_id, nm_id, imt_id, nm_uuid, vendor_code, subject_id, wb_brand, created_at, updated_at)
-		VALUES 
-			%s
-		ON CONFLICT (global_id) DO UPDATE
-		SET 
-			nm_id = EXCLUDED.nm_id,
-			imt_id = EXCLUDED.imt_id,
-			nm_uuid = EXCLUDED.nm_uuid,
-			vendor_code = EXCLUDED.vendor_code,
-			subject_id = EXCLUDED.subject_id,
-			wb_brand = EXCLUDED.wb_brand,
-			created_at = LEAST(nomenclatures.created_at, EXCLUDED.created_at),
-			updated_at = GREATEST(nomenclatures.updated_at, EXCLUDED.updated_at);
-	`, strings.Join(valueStrings, ", "))
+		// Текущая пачка данных
+		currentBatch := batch[start:end]
+		numRecords := len(currentBatch) / 9 // Число записей в текущей пачке
 
-	// Выполняем запрос с батчем параметров
-	_, err := d.db.Exec(query, removeDuplicates(batch)...)
-	return err
-}
-func removeDuplicates(batch []interface{}) []interface{} {
-	seen := make(map[interface{}]bool)
-	uniqueBatch := []interface{}{}
+		// Генерация частей запроса для текущей пачки
+		valueStrings := []string{}
+		for i := 0; i < numRecords; i++ {
+			valueStrings = append(valueStrings, fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)",
+				i*9+1, i*9+2, i*9+3, i*9+4, i*9+5, i*9+6, i*9+7, i*9+8, i*9+9))
+		}
 
-	for _, entry := range batch {
-		if _, exists := seen[entry]; !exists {
-			seen[entry] = true
-			uniqueBatch = append(uniqueBatch, entry)
+		// Полный SQL-запрос
+		query := fmt.Sprintf(`
+			INSERT INTO wildberries.nomenclatures (global_id, nm_id, imt_id, nm_uuid, vendor_code, subject_id, wb_brand, created_at, updated_at)
+			VALUES 
+				%s
+			ON CONFLICT (global_id) DO UPDATE
+			SET 
+				nm_id = EXCLUDED.nm_id,
+				imt_id = EXCLUDED.imt_id,
+				nm_uuid = EXCLUDED.nm_uuid,
+				vendor_code = EXCLUDED.vendor_code,
+				subject_id = EXCLUDED.subject_id,
+				wb_brand = EXCLUDED.wb_brand,
+				created_at = LEAST(nomenclatures.created_at, EXCLUDED.created_at),
+				updated_at = GREATEST(nomenclatures.updated_at, EXCLUDED.updated_at);
+		`, strings.Join(valueStrings, ", "))
+
+		// Выполняем запрос с текущей пачкой параметров
+		if _, err := d.db.Exec(query, currentBatch...); err != nil {
+			return err
 		}
 	}
 
-	return uniqueBatch
+	return nil
+}
+
+func removeDuplicateRecords(batch []interface{}) []interface{} {
+	unique := make(map[interface{}]bool) // Хранилище уникальных записей
+	result := []interface{}{}            // Результирующий срез
+
+	// Итерируемся по данным в батче
+	for i := 0; i < len(batch); i += 9 { // Группируем записи по 9 параметров
+		recordKey := fmt.Sprintf("%v", batch[i]) // Используем `global_id` как уникальный ключ
+		if _, exists := unique[recordKey]; !exists {
+			unique[recordKey] = true
+			result = append(result, batch[i:i+9]...) // Добавляем запись в результирующий срез
+		}
+	}
+
+	return result
 }
 
 func (d *NomenclatureEngine) GetDBNomenclatures() (map[int]struct{}, error) {

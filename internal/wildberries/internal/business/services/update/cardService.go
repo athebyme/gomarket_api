@@ -91,6 +91,14 @@ func (s *CardService) Prepare(ids []int) (interface{}, error) {
 
 	ids = s.extractKeys(descriptionsMap)
 
+	barcodesMap, err := s.filterBarcodes(ids)
+	if err != nil {
+		return nil, err
+	}
+	s.logFilteredIDs(&filtered, ids, barcodesMap, "Barcodes filtering")
+
+	ids = s.extractKeys(barcodesMap)
+
 	filtered.Range(func(key, value any) bool {
 		preparationLogger.Log("Excluded ID: %v, Reason: %v", key, value)
 		return true
@@ -366,23 +374,36 @@ func (s *CardService) filterPrice(ids []int) (map[int]interface{}, error) {
 }
 
 func (s *CardService) filterBarcodes(ids []int) (map[int]interface{}, error) {
-	globalIDs, err := s.wsclient.FetchGlobalIDs()
+	barcodesRepo, err := s.wsclient.FetchBarcodes(requests.BarcodeRequest{FilterRequest: requests.FilterRequest{ProductIDs: ids}})
 	if err != nil {
 		return nil, err
 	}
 
-	globalIDsMap := make(map[int]interface{}, len(ids))
-	for _, id := range globalIDs {
-		globalIDsMap[id] = struct{}{}
+	barcodes := make(map[int]interface{}, len(ids))
+	for id, barcode := range barcodesRepo {
+		barcodes[id] = barcode
 	}
 
 	idSet := make(map[int]interface{})
 	if len(ids) == 0 {
-		return globalIDsMap, nil
+		return barcodes, nil
 	} else {
 		for _, id := range ids {
-			if _, ok := globalIDsMap[id]; ok {
-				idSet[id] = struct{}{}
+			switch v := barcodes[id].(type) {
+			case string:
+				idSet[id] = []string{v}
+			case []string:
+				idSet[id] = v
+			case []interface{}:
+				strSlice := make([]string, len(v))
+				for i, item := range v {
+					if str, ok := item.(string); ok {
+						strSlice[i] = str
+					}
+				}
+				idSet[id] = strSlice
+			default:
+				return nil, fmt.Errorf("unsupported type of barcode ")
 			}
 		}
 	}

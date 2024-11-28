@@ -11,7 +11,7 @@ type CreateCardBuilder struct {
 	Description     string
 	VendorCode      string
 	Dimensions      response.DimensionWrapper
-	Sizes           response.SizeWrapper
+	Sizes           []response.SizeWrapper
 	Characteristics []response.CharcWrapper
 }
 
@@ -44,7 +44,7 @@ func (b *CreateCardBuilder) WithDimensionWrapper(dimensions response.DimensionWr
 	return b
 }
 func (b *CreateCardBuilder) WithSizes(sizes response.SizeWrapper) *CreateCardBuilder {
-	b.Sizes = sizes
+	b.Sizes = append(b.Sizes, sizes)
 	return b
 }
 func (b *CreateCardBuilder) WithCharacteristics(charcs []response.CharcWrapper) *CreateCardBuilder {
@@ -66,6 +66,12 @@ func (b *CreateCardBuilder) Build() (interface{}, error) {
 	if card.Characteristics == nil {
 		card.Characteristics = []response.CharcWrapper{}
 	}
+	for _, v := range card.Sizes {
+		if v.Skus == nil {
+			v.Skus = []string{}
+		}
+	}
+
 	if err := card.Validate(); err != nil {
 		return nil, err
 	}
@@ -78,6 +84,6 @@ func (b *CreateCardBuilder) Clear() {
 	b.Description = ""
 	b.VendorCode = ""
 	b.Dimensions = response.DimensionWrapper{}
-	b.Sizes = response.SizeWrapper{}
+	b.Sizes = []response.SizeWrapper{}
 	b.Characteristics = []response.CharcWrapper{}
 }

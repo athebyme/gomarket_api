@@ -72,7 +72,7 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	//_, err = s.nomenclatureService.UpdateDBNomenclatures(request.Settings{
 	//	Sort:   request.Sort{Ascending: false},
 	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-	//	Cursor: request.Cursor{Limit: 16000},
+	//	Cursor: request.Cursor{Limit: 12000},
 	//}, "")
 	//if err != nil {
 	//	return
@@ -82,6 +82,12 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	//if err != nil {
 	//	s.log.FatalLog("Error loading Charcs: %w\n", err)
 	//}
+
+	//_, err = s.nomenclatureService.UpdateCardMedia(request.Settings{
+	//	Sort:   request.Sort{Ascending: false},
+	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+	//	Cursor: request.Cursor{Limit: 1},
+	//})
 
 	s.uploadProducts(authEngine)
 }
@@ -130,11 +136,11 @@ func (s *WildberriesServer) uploadProducts(auth services.AuthEngine) interface{}
 		return nil
 	}
 
-	req := request.CreateCardRequestWrapper{}
-	for _, v := range resultIDs.([]request.CreateCardRequestData) {
-		req.Variants = append(req.Variants, v)
-		req.SubjectID = categoryID
-		break
+	req := []request.CreateCardRequestWrapper{}
+	for i, v := range resultIDs.([]request.CreateCardRequestData) {
+		req = append(req, request.CreateCardRequestWrapper{})
+		req[i].Variants = append(req[i].Variants, v)
+		req[i].SubjectID = categoryID
 	}
 
 	_, _, err = cardService.SendToServerModels(req)

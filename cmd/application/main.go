@@ -52,8 +52,9 @@ func main() {
 		priceHandler := handlers.NewPriceHandler(con)
 		sizeHandler := handlers.NewSizeHandler(con, writer)
 		brandHandler := handlers.NewBrandHandler(con, writer)
+		barcodesHandler := handlers.NewBarcodeHandler(con, writer)
 		wg.Done()
-		web.SetupRoutes(handler, mediaHandler, priceHandler, sizeHandler, brandHandler)
+		web.SetupRoutes(handler, mediaHandler, priceHandler, sizeHandler, brandHandler, barcodesHandler)
 	}()
 
 	wg.Wait()

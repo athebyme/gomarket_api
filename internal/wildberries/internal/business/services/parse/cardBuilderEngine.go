@@ -65,7 +65,12 @@ func (e *CardBuilderProxy) WithSizes(sizes interface{}) builder.Proxy {
 
 func (e *CardBuilderProxy) WithPrice(price int) builder.Proxy {
 	// Проверяем текущий объект Sizes
-	currentSizes := e.builder.Sizes
+	var currentSizes response.SizeWrapper
+	if e.builder.Sizes == nil || len(e.builder.Sizes) == 0 {
+		currentSizes = response.SizeWrapper{}
+	} else {
+		currentSizes = e.builder.Sizes[0]
+	}
 
 	// Создаём новый объект SizeWrapper, копируя существующие значения
 	updatedSizes := response.SizeWrapper{

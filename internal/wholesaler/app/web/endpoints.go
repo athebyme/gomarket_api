@@ -23,6 +23,8 @@ func SetupRoutes(handlers ...handlers2.Handler) {
 			handlerMap["SizeHandler"] = h
 		case *handlers2.BrandHandler:
 			handlerMap["BrandHandler"] = h
+		case *handlers2.BarcodeHandler:
+			handlerMap["BarcodeHandler"] = h
 		default:
 			log.Printf("Unknown handler type: %T", h)
 		}
@@ -67,7 +69,11 @@ func SetupRoutes(handlers ...handlers2.Handler) {
 	} else {
 		log.Fatalf("BrandHandler not provided")
 	}
-
+	if barcodeHandler, ok := handlerMap["BarcodeHandler"].(*handlers2.BarcodeHandler); ok {
+		http.HandleFunc("/api/barcodes", barcodeHandler.ServeHTTP)
+	} else {
+		log.Fatalf("BarcodeHandler not provided")
+	}
 	log.Printf("Запущен сервис wholesaler /api/")
 	log.Fatal(http.ListenAndServe(":8081", nil))
 }

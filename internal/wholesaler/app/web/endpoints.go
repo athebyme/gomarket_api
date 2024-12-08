@@ -80,7 +80,7 @@ func SetupRoutes(handlers ...handlers2.Handler) {
 	handlerWithCORS := enableCORS(mux)
 
 	log.Printf("Запущен сервис wholesaler /api/")
-	log.Fatal(http.ListenAndServeTLS(":8081", "cert.pem", "key.pem", handlerWithCORS))
+	log.Fatal(http.ListenAndServe(":8081", handlerWithCORS))
 }
 
 func enableCORS(next http.Handler) http.Handler {

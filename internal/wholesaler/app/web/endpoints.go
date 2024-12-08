@@ -37,43 +37,61 @@ func SetupRoutes(handlers ...handlers2.Handler) {
 		}
 	}
 
+	mux := http.NewServeMux()
+
 	// Проверка и настройка маршрутов для ProductHandler
 	if productHandler, ok := handlerMap["ProductHandler"].(*handlers2.ProductHandler); ok {
-		http.HandleFunc("/api/globalids", productHandler.GetGlobalIDsHandler)
-		http.HandleFunc("/api/appellations", productHandler.GetAppellationHandler)
-		http.HandleFunc("/api/descriptions", productHandler.GetDescriptionsHandler)
+		mux.HandleFunc("/api/globalids", productHandler.GetGlobalIDsHandler)
+		mux.HandleFunc("/api/appellations", productHandler.GetAppellationHandler)
+		mux.HandleFunc("/api/descriptions", productHandler.GetDescriptionsHandler)
 	} else {
 		log.Fatalf("ProductHandler not provided")
 	}
 
 	if mediaHandler, ok := handlerMap["MediaHandler"].(*handlers2.MediaHandler); ok {
-		http.HandleFunc("/api/media", mediaHandler.GetMediaHandler)
+		mux.HandleFunc("/api/media", mediaHandler.GetMediaHandler)
 	} else {
 		log.Fatalf("MediaHandler not provided")
 	}
 
 	if priceHandler, ok := handlerMap["PriceHandler"].(*handlers2.PriceHandler); ok {
-		http.HandleFunc("/api/price", priceHandler.GetPriceHandler)
+		mux.HandleFunc("/api/price", priceHandler.GetPriceHandler)
 	} else {
 		log.Fatalf("PriceHandler not provided")
 	}
 
 	if sizeHandler, ok := handlerMap["SizeHandler"].(*handlers2.SizeHandler); ok {
-		http.HandleFunc("/api/sizes", sizeHandler.GetSizeHandler)
+		mux.HandleFunc("/api/size", sizeHandler.GetSizeHandler)
 	} else {
 		log.Fatalf("SizeHandler not provided")
 	}
 
 	if brandHandler, ok := handlerMap["BrandHandler"].(*handlers2.BrandHandler); ok {
-		http.HandleFunc("/api/brands", brandHandler.GetBrandHandler)
+		mux.HandleFunc("/api/brands", brandHandler.GetBrandHandler)
 	} else {
 		log.Fatalf("BrandHandler not provided")
 	}
 	if barcodeHandler, ok := handlerMap["BarcodeHandler"].(*handlers2.BarcodeHandler); ok {
-		http.HandleFunc("/api/barcodes", barcodeHandler.ServeHTTP)
+		mux.HandleFunc("/api/barcodes", barcodeHandler.ServeHTTP)
 	} else {
 		log.Fatalf("BarcodeHandler not provided")
 	}
+
+	handlerWithCORS := enableCORS(mux)
+
 	log.Printf("Запущен сервис wholesaler /api/")
-	log.Fatal(http.ListenAndServe(":8081", nil))
+	log.Fatal(http.ListenAndServe(":8081", handlerWithCORS))
+}
+
+func enableCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")                                // Разрешить запросы со всех источников
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS") // Разрешить методы
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")     // Разрешить заголовки
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }

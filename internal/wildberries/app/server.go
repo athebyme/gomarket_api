@@ -7,6 +7,7 @@ import (
 	"gomarketplace_api/internal/wildberries/internal/business/models/dto/request"
 	"gomarketplace_api/internal/wildberries/internal/business/services"
 	"gomarketplace_api/internal/wildberries/internal/business/services/get"
+	"gomarketplace_api/internal/wildberries/internal/business/services/parse"
 	"gomarketplace_api/internal/wildberries/internal/business/services/update"
 	"gomarketplace_api/internal/wildberries/internal/storage"
 	"gomarketplace_api/pkg/business/service"
@@ -49,6 +50,7 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 		"http://localhost:8081",
 		authEngine,
 		s.log,
+		parse.NewBrandServiceWildberries(s.WbBanned.BannedBrands),
 	)
 
 	migrationApply := []migration.MigrationInterface{
@@ -69,27 +71,39 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	}
 	s.log.Log("WB migrations applied successfully!")
 
-	//_, err = s.nomenclatureService.UpdateDBNomenclatures(request.Settings{
-	//	Sort:   request.Sort{Ascending: false},
-	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-	//	Cursor: request.Cursor{Limit: 12000},
-	//}, "")
-	//if err != nil {
-	//	return
-	//}
-
 	//err = s.loadCharcs(db, authEngine)
 	//if err != nil {
 	//	s.log.FatalLog("Error loading Charcs: %w\n", err)
 	//}
 
+	//categories := []int{2865, 5071, 5073, 5067}
+	//for _, categoryID := range categories {
+	//	s.uploadProducts(authEngine, categoryID)
+	//	time.Sleep(30 * time.Second)
+	//}
+	//
 	//_, err = s.nomenclatureService.UpdateCardMedia(request.Settings{
 	//	Sort:   request.Sort{Ascending: false},
-	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-	//	Cursor: request.Cursor{Limit: 1},
+	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{"Lasciva", "Wisteria", "BANANZZA"}, ImtID: 0},
+	//	Cursor: request.Cursor{Limit: 11000},
 	//})
+	//
+	//time.Sleep(5 * time.Second)
+	//
+	//_, err = s.nomenclatureService.UpdateDBNomenclatures(request.Settings{
+	//	Sort:   request.Sort{Ascending: false},
+	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+	//	Cursor: request.Cursor{Limit: 16000},
+	//}, "")
+	_, err = s.nomenclatureService.UpdateCardBrand(request.Settings{
+		Sort:   request.Sort{Ascending: false},
+		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{"Lasciva", "Wisteria", "BANANZZA"}, ImtID: 0},
+		Cursor: request.Cursor{Limit: 15000},
+	})
+	if err != nil {
+		return
+	}
 
-	s.uploadProducts(authEngine)
 }
 
 func (s *WildberriesServer) updateNames() interface{} {
@@ -108,7 +122,7 @@ func (s *WildberriesServer) updateNames() interface{} {
 	return updateMedia
 }
 
-func (s *WildberriesServer) uploadProducts(auth services.AuthEngine) interface{} {
+func (s *WildberriesServer) uploadProducts(auth services.AuthEngine, categoryID int) interface{} {
 	wsUrl := "http://localhost:8081"
 	textService := service.NewTextService()
 	db, err := s.Database.Connect()
@@ -123,7 +137,6 @@ func (s *WildberriesServer) uploadProducts(auth services.AuthEngine) interface{}
 	cardService := update.NewCardService(wsUrl, textService, s.writer, s.WildberriesConfig)
 
 	accuracy := float32(0.3)
-	categoryID := 5090
 	result, err := nmService.GetSetOfUncreatedItemsWithCategories(accuracy, true, categoryID)
 
 	ids := make([]int, len(result))
@@ -148,7 +161,7 @@ func (s *WildberriesServer) uploadProducts(auth services.AuthEngine) interface{}
 		return nil
 	}
 
-	s.log.Log("Total count of items : %d", len(resultIDs.([]request.CreateCardRequestData)))
+	s.log.Log("Category %d. Total count of items : %d", categoryID, len(resultIDs.([]request.CreateCardRequestData)))
 	return struct{}{}
 }
 

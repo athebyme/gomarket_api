@@ -13,6 +13,7 @@ import (
 	models "gomarketplace_api/internal/wildberries/internal/business/models/get"
 	"gomarketplace_api/internal/wildberries/internal/business/services"
 	"gomarketplace_api/internal/wildberries/internal/business/services/get"
+	"gomarketplace_api/internal/wildberries/internal/business/services/parse"
 	clients2 "gomarketplace_api/internal/wildberries/pkg/clients"
 	"gomarketplace_api/pkg/business/service"
 	"io"
@@ -31,14 +32,16 @@ type CardUpdateService struct {
 	nomenclatureService get.NomenclatureEngine
 	wsclient            *clients2.WServiceClient
 	textService         service.ITextService
+	brandService        parse.BrandService
 	services.AuthEngine
 }
 
-func NewCardUpdateService(nservice *get.NomenclatureEngine, textService service.ITextService, wsClientUrl string, auth services.AuthEngine, writer io.Writer) *CardUpdateService {
+func NewCardUpdateService(nservice *get.NomenclatureEngine, textService service.ITextService, wsClientUrl string, auth services.AuthEngine, writer io.Writer, brandService parse.BrandService) *CardUpdateService {
 	return &CardUpdateService{
 		nomenclatureService: *nservice,
 		wsclient:            clients2.NewWServiceClient(wsClientUrl, writer),
 		textService:         textService,
+		brandService:        brandService,
 		AuthEngine:          auth,
 	}
 }
@@ -55,7 +58,7 @@ func (cu *CardUpdateService) UpdateCardNaming(settings request.Settings) (int, e
 	const UPLOAD_SIZE = 2000
 	const MaxBatchSize = 1 << 20 // 1 MB
 	const GOROUTINE_COUNT = 5
-	const REQUEST_RATE_LIMIT = 50 // 100 запросов в минуту = max
+	const REQUEST_RATE_LIMIT = 70 // 100 запросов в минуту = max
 	const UPLOAD_RATE_LIMIT = 10
 	var currentBatch []request.Model
 	var currentBatchSize int
@@ -186,8 +189,8 @@ const updateCardsMediaUrl = "https://content-api.wildberries.ru/content/v3/media
 
 func (cu *CardUpdateService) UpdateCardMedia(settings request.Settings) (int, error) {
 	const GOROUTINE_COUNT = 5
-	const REQUEST_RATE_LIMIT = 70 // 100 запросов в минуту = max
-	const UPLOAD_RATE_LIMIT = 70
+	const REQUEST_RATE_LIMIT = 60 // 100 запросов в минуту = max
+	const UPLOAD_RATE_LIMIT = 60
 
 	var updatedCount = 0
 	var goroutinesNmsCount atomic.Int32
@@ -251,6 +254,14 @@ func (cu *CardUpdateService) UpdateCardMedia(settings request.Settings) (int, er
 
 				mediaRequest := request.NewMediaRequest(nomenclature.NmID, urls)
 
+				if err := responseLimiter.Wait(context.Background()); err != nil {
+					log.Printf("Rate limiter error: %s", err)
+					return
+				}
+				if err != nil {
+					log.Printf("Error fetching nomenclature %d: %s", i, err)
+					return
+				}
 				mu.Lock()
 				uploadChan <- mediaRequest
 				mu.Unlock()
@@ -286,6 +297,126 @@ func (cu *CardUpdateService) UpdateCardMedia(settings request.Settings) (int, er
 	log.Printf("Goroutines fetchers got (%d) nomenclautres", goroutinesNmsCount.Load())
 	log.Printf("Media update completed, total updated count: %d. Unfetched count : %d", updatedCount, numberOfErroredNomenclatures.Load())
 	return updatedCount, nil
+}
+
+func (cu *CardUpdateService) UpdateCardBrand(settings request.Settings) (int, error) {
+	const UPLOAD_SIZE = 2000
+	const MaxBatchSize = 1 << 20 // 1 MB
+	const GOROUTINE_COUNT = 5
+	const REQUEST_RATE_LIMIT = 70 // 100 запросов в минуту = max
+	const UPLOAD_RATE_LIMIT = 10
+	var currentBatch []request.Model
+	var currentBatchSize int
+	var gotData []response.Nomenclature
+	var goroutinesNmsCount atomic.Int32
+
+	log.Println("Fetching Brands list...")
+	brandsMap, err := cu.wsclient.FetchBrands(requests.BrandRequest{FilterRequest: requests.FilterRequest{ProductIDs: []int{}}})
+	if err != nil {
+		return 0, fmt.Errorf("error fetching descriptions: %w", err)
+	}
+
+	var processWg sync.WaitGroup
+	var uploadWg sync.WaitGroup
+	var mu sync.Mutex
+	var processedItems sync.Map
+	nomenclatureChan := make(chan response.Nomenclature)
+	uploadChan := make(chan []request.Model) // Канал для отправки данных
+
+	responseLimiter := rate.NewLimiter(rate.Every(time.Minute/REQUEST_RATE_LIMIT), REQUEST_RATE_LIMIT)
+	uploadToServerLimiter := rate.NewLimiter(rate.Every(time.Minute/UPLOAD_RATE_LIMIT), UPLOAD_RATE_LIMIT)
+
+	log.Println("Fetching and sending nomenclatures to the channel...")
+	go func() {
+		if err := cu.nomenclatureService.GetNomenclaturesWithLimitConcurrentlyPutIntoChanel(settings, "", nomenclatureChan, responseLimiter); err != nil {
+			log.Printf("Error fetching nomenclatures concurrently: %s", err)
+		}
+	}()
+
+	// Запуск горутин для обработки номенклатур
+	log.Println("Starting goroutines for processing nomenclatures...")
+	for i := 0; i < GOROUTINE_COUNT; i++ {
+		processWg.Add(1)
+		go func(i int) {
+			defer processWg.Done()
+			for nomenclature := range nomenclatureChan {
+				goroutinesNmsCount.Add(1)
+
+				var wbCard models.WildberriesCard
+				wbCard = *wbCard.FromNomenclature(nomenclature)
+				_, loaded := processedItems.LoadOrStore(wbCard.VendorCode, true)
+				if loaded {
+					continue // Если запись уже была обработана, пропускаем её
+				}
+
+				globalId, err := nomenclature.GlobalID()
+				if err != nil || globalId == 0 {
+					numberOfErroredNomenclatures.Add(1)
+					continue
+				}
+
+				switch brand := brandsMap[globalId].(type) {
+				case string:
+					if cu.brandService.IsBanned(brand) || brand == "" {
+						numberOfErroredNomenclatures.Add(1)
+						continue
+					}
+					wbCard.Brand = brand
+				default:
+					numberOfErroredNomenclatures.Add(1)
+				}
+
+				mu.Lock()
+				gotData = append(gotData, nomenclature)
+				currentBatch = append(currentBatch, &wbCard)
+				currentBatchSize += len([]byte(wbCard.Title)) + len([]byte(wbCard.Description))
+				if len(currentBatch) >= UPLOAD_SIZE || currentBatchSize >= MaxBatchSize {
+					batchToSend := currentBatch
+					currentBatch = nil
+					currentBatchSize = 0
+					uploadChan <- batchToSend
+				}
+				mu.Unlock()
+			}
+		}(i)
+	}
+
+	// Горутин для отправки данных
+	uploadWg.Add(1)
+	go func() {
+		defer uploadWg.Done()
+		for batch := range uploadChan {
+			log.Println("Uploading batch of cards...")
+			// Лимитирование запросов на загрузку
+			if err := uploadToServerLimiter.Wait(context.Background()); err != nil {
+				log.Printf("Error waiting for rate limiter: %s", err)
+				return
+			}
+
+			cards, err := cu.processAndUpload(updateCardsUrl, batch)
+			if err != nil {
+				log.Printf("Error during uploading %s", err)
+				return
+			}
+			updatedCount.Add(int32(cards))
+		}
+	}()
+
+	processWg.Wait()
+
+	// Process remaining data
+	log.Println("Processing any remaining data...")
+	if len(currentBatch) > 0 {
+		log.Println("Uploading remaining batch of cards...")
+		uploadChan <- currentBatch
+		currentBatch = nil
+	}
+	close(uploadChan)
+	uploadWg.Wait()
+
+	log.Printf("Goroutines fetchers got (%d) nomenclautres", goroutinesNmsCount.Load())
+	log.Printf("Update completed, total updated count: %d. Unfetched count : %d", updatedCount.Load(), numberOfErroredNomenclatures.Load())
+	return int(updatedCount.Load()), nil
 }
 
 func (cu *CardUpdateService) UpdateDBNomenclatures(settings request.Settings, locale string) (int, error) {

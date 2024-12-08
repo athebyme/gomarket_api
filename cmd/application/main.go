@@ -57,6 +57,7 @@ func main() {
 		web.SetupRoutes(handler, mediaHandler, priceHandler, sizeHandler, brandHandler, barcodesHandler)
 	}()
 
+	wg.Add(1)
 	wg.Wait()
 
 	wg.Add(1)

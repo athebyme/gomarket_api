@@ -379,8 +379,6 @@ func processProducts(db *sql.DB) error {
 		if err := rows.Scan(&globalID, &dimension); err != nil {
 			return fmt.Errorf("failed to scan row: %w", err)
 		}
-		log.Printf("Item (id=%d)", globalID)
-
 		sizeDescriptors, err := ParseSizes(dimension) // Передаем dimension как строку
 		if err != nil {
 			return fmt.Errorf("failed to parse sizes for globalID %d: %w", globalID, err) // Более информативное сообщение

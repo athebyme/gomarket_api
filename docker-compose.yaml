@@ -36,7 +36,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: wisteria
     ports:
-      - "5433:5432"  # Пробрасываем на другой порт на хосте
+      - "5434:5432"  # Пробрасываем на другой порт на хосте
     volumes:
       - pgdata2:/var/lib/postgresql/data
     networks:
@@ -54,6 +54,7 @@ services:
 volumes:
   pgdata1:
   pgdata2:
+  pgdata3:
 
 networks:
   goapp-network:

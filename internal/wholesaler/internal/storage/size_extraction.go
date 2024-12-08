@@ -3,7 +3,6 @@ package storage
 import (
 	"fmt"
 	"gomarketplace_api/internal/wholesaler/internal/models"
-	"log"
 	"regexp"
 	"strconv"
 	"strings"
@@ -85,7 +84,7 @@ func ParseSizes(text string) ([]models.SizeEntity, error) {
 				sizeMap[key] = true // Отмечаем размер как найденный
 			} else {
 				// Дополнительная отладка, если нужно
-				log.Printf("Skipping duplicate size: %+v, key: %s, item: %s result: %v\n", parsedSize, key, item, result)
+				continue
 			}
 		}
 	}

@@ -246,7 +246,9 @@ func (d *NomenclatureEngine) UploadToDb(settings request.Settings, locale string
 			log.Printf("Nomenclature upload channel closed. Returning")
 		}()
 		for nomenclature := range nomenclatureChan {
+			mu.Lock()
 			saw++
+			mu.Unlock()
 			id, err := nomenclature.GlobalID()
 			if err != nil {
 				mu.Lock()

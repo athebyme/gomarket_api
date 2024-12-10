@@ -29,14 +29,14 @@ import (
 )
 
 type CardUpdateService struct {
-	nomenclatureService get.NomenclatureEngine
+	nomenclatureService get.SearchEngine
 	wsclient            *clients2.WServiceClient
 	textService         service.ITextService
 	brandService        parse.BrandService
 	services.AuthEngine
 }
 
-func NewCardUpdateService(nservice *get.NomenclatureEngine, textService service.ITextService, wsClientUrl string, auth services.AuthEngine, writer io.Writer, brandService parse.BrandService) *CardUpdateService {
+func NewCardUpdateService(nservice *get.SearchEngine, textService service.ITextService, wsClientUrl string, auth services.AuthEngine, writer io.Writer, brandService parse.BrandService) *CardUpdateService {
 	return &CardUpdateService{
 		nomenclatureService: *nservice,
 		wsclient:            clients2.NewWServiceClient(wsClientUrl, writer),

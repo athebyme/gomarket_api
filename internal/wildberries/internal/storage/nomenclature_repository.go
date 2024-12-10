@@ -1,6 +1,10 @@
 package storage
 
-import "database/sql"
+import (
+	"database/sql"
+	"fmt"
+	"github.com/lib/pq"
+)
 
 type NomenclatureRepository struct {
 	db *sql.DB
@@ -58,6 +62,96 @@ func (r *NomenclatureRepository) GetSetOfUncreatedItemsWithCategories(accuracy f
 			"category":             categoryName,
 			"parent_category_id":   parentCategoryID,
 			"parent_category_name": parentCategoryName,
+		}
+	}
+	return items, nil
+}
+
+func (r *NomenclatureRepository) GetAllNmIDsByCategoryId(categoryIDs []int) (map[int]interface{}, error) {
+	query := `
+		SELECT 
+			n.global_id, 
+			n.nm_id
+		FROM 
+			wildberries.nomenclatures n
+		JOIN 
+			wildberries.products p ON n.global_id = p.global_id
+		WHERE 
+			p.category_id = ANY($1);
+			`
+
+	var rows *sql.Rows
+	var err error
+
+	if len(categoryIDs) <= 0 {
+		return nil, fmt.Errorf("category ids cant be empty")
+	} else {
+		rows, err = r.db.Query(query, pq.Array(categoryIDs))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	defer rows.Close()
+
+	items := make(map[int]interface{})
+
+	for rows.Next() {
+		var globalID int
+		var nmID int
+		err = rows.Scan(&globalID, &nmID)
+		if err != nil {
+			return nil, err
+		}
+		items[globalID] = map[interface{}]interface{}{
+			"ID":   globalID,
+			"nmID": nmID,
+		}
+	}
+	return items, nil
+}
+
+func (r *NomenclatureRepository) GetAllNmIDsByCategoryNames(categoryNames []string) (map[int]interface{}, error) {
+	query := `
+			SELECT 
+				n.global_id, 
+				n.nm_id
+			FROM 
+				wildberries.nomenclatures n
+			JOIN 
+				wildberries.products p ON n.global_id = p.global_id
+			JOIN 
+				wildberries.categories c ON p.category_id = c.category_id
+			WHERE 
+				c.category = ANY($1);
+			`
+
+	var rows *sql.Rows
+	var err error
+
+	if len(categoryNames) <= 0 {
+		return nil, fmt.Errorf("category ids cant be empty")
+	} else {
+		rows, err = r.db.Query(query, pq.Array(categoryNames))
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	defer rows.Close()
+
+	items := make(map[int]interface{})
+
+	for rows.Next() {
+		var globalID int
+		var nmID int
+		err = rows.Scan(&globalID, &nmID)
+		if err != nil {
+			return nil, err
+		}
+		items[globalID] = map[interface{}]interface{}{
+			"ID":   globalID,
+			"nmID": nmID,
 		}
 	}
 	return items, nil

@@ -19,20 +19,20 @@ import (
 	"time"
 )
 
-// NomenclatureEngine -- сервис по работе с номенклатурами. get-update
-type NomenclatureEngine struct {
+// SearchEngine -- сервис по работе с номенклатурами. get-update
+type SearchEngine struct {
 	db *sql.DB
 	services.AuthEngine
 	writer io.Writer
 }
 
-func NewNomenclatureEngine(db *sql.DB, auth services.AuthEngine, writer io.Writer) *NomenclatureEngine {
-	return &NomenclatureEngine{db: db, AuthEngine: auth, writer: writer}
+func NewSearchEngine(db *sql.DB, auth services.AuthEngine, writer io.Writer) *SearchEngine {
+	return &SearchEngine{db: db, AuthEngine: auth, writer: writer}
 }
 
 const postNomenclature = "https://content-api.wildberries.ru/content/v2/get/cards/list"
 
-func (d *NomenclatureEngine) GetNomenclatures(settings request.Settings, locale string) (*responses.NomenclatureResponse, error) {
+func (d *SearchEngine) GetNomenclatures(settings request.Settings, locale string) (*responses.NomenclatureResponse, error) {
 	url := postNomenclature
 	if locale != "" {
 		url = fmt.Sprintf("%s?locale=%s", url, locale)
@@ -71,7 +71,7 @@ func (d *NomenclatureEngine) GetNomenclatures(settings request.Settings, locale 
 	return &nomenclatureResponse, nil
 }
 
-func (d *NomenclatureEngine) GetNomenclaturesWithLimitConcurrentlyPutIntoChanel(settings request.Settings, locale string, nomenclatureChan chan<- response.Nomenclature, responseLimiter *rate.Limiter) error {
+func (d *SearchEngine) GetNomenclaturesWithLimitConcurrentlyPutIntoChanel(settings request.Settings, locale string, nomenclatureChan chan<- response.Nomenclature, responseLimiter *rate.Limiter) error {
 	limit := settings.Cursor.Limit
 
 	log.Printf("Getting wildberries nomenclatures with limit: %d", limit)
@@ -201,7 +201,7 @@ func (d *NomenclatureEngine) GetNomenclaturesWithLimitConcurrentlyPutIntoChanel(
 /*
 Возвращает число обновленных(добавленных) карточек
 */
-func (d *NomenclatureEngine) UploadToDb(settings request.Settings, locale string) (int, error) {
+func (d *SearchEngine) UploadToDb(settings request.Settings, locale string) (int, error) {
 	log.Printf("Updating wildberries.nomenclatures")
 	log.SetPrefix("NM UPDATER | ")
 
@@ -312,7 +312,7 @@ func (d *NomenclatureEngine) UploadToDb(settings request.Settings, locale string
 	return updated, nil
 }
 
-func (d *NomenclatureEngine) insertBatchNomenclatures(batch []interface{}) error {
+func (d *SearchEngine) insertBatchNomenclatures(batch []interface{}) error {
 	// Максимальное количество записей в одной пачке
 	const maxBatchSize = 900 // 900 записей = 8100 параметров (по 9 параметров на запись)
 	batch = removeDuplicateRecords(batch)
@@ -376,7 +376,7 @@ func removeDuplicateRecords(batch []interface{}) []interface{} {
 	return result
 }
 
-func (d *NomenclatureEngine) GetDBNomenclatures() (map[int]struct{}, error) {
+func (d *SearchEngine) GetDBNomenclatures() (map[int]struct{}, error) {
 	// запрос для получения списка category_id
 	query := `SELECT global_id FROM wildberries.nomenclatures`
 

@@ -43,7 +43,7 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	}
 	defer db.Close()
 
-	nomenclatureUpdGet := get.NewNomenclatureEngine(db, authEngine, s.writer)
+	nomenclatureUpdGet := get.NewSearchEngine(db, authEngine, s.writer)
 	s.nomenclatureService = update.NewCardUpdateService(
 		nomenclatureUpdGet,
 		service.NewTextService(),
@@ -95,10 +95,11 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
 	//	Cursor: request.Cursor{Limit: 16000},
 	//}, "")
-	_, err = s.nomenclatureService.UpdateCardBrand(request.Settings{
+
+	_, err = s.nomenclatureService.UpdateCardNaming(request.Settings{
 		Sort:   request.Sort{Ascending: false},
-		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{"Lasciva", "Wisteria", "BANANZZA"}, ImtID: 0},
-		Cursor: request.Cursor{Limit: 15000},
+		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+		Cursor: request.Cursor{Limit: 1},
 	})
 	if err != nil {
 		return
@@ -130,7 +131,7 @@ func (s *WildberriesServer) uploadProducts(auth services.AuthEngine, categoryID 
 		s.log.FatalLog("Error connecting to PostgreSQL: %s\n", err)
 	}
 
-	engine := get.NewNomenclatureEngine(db, auth, s.writer)
+	engine := get.NewSearchEngine(db, auth, s.writer)
 	repo := storage.NewNomenclatureRepository(db)
 
 	nmService := update.NewNomenclatureService(*engine, *repo)

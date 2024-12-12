@@ -87,19 +87,19 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	//
 	//time.Sleep(5 * time.Second)
 	//
-	_, err = s.cardUpdateService.UpdateDBNomenclatures(request.Settings{
-		Sort:   request.Sort{Ascending: false},
-		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-		Cursor: request.Cursor{Limit: 10000},
-	}, "")
-	if err != nil {
-		return
-	}
+	//_, err = s.cardUpdateService.UpdateDBNomenclatures(request.Settings{
+	//	Sort:   request.Sort{Ascending: false},
+	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+	//	Cursor: request.Cursor{Limit: 10000},
+	//}, "")
+	//if err != nil {
+	//	return
+	//}
 
 	_, err = s.cardUpdateService.UpdateCardMedia(request.Settings{
 		Sort:   request.Sort{Ascending: false},
 		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-		Cursor: request.Cursor{Limit: 4500},
+		Cursor: request.Cursor{Limit: 15500},
 	})
 	//err = s.updateByCategoryId()
 

@@ -103,10 +103,7 @@ func (r *NomenclatureRepository) GetAllNmIDsByCategoryId(categoryIDs []int) (map
 		if err != nil {
 			return nil, err
 		}
-		items[globalID] = map[interface{}]interface{}{
-			"ID":   globalID,
-			"nmID": nmID,
-		}
+		items[globalID] = nmID
 	}
 	return items, nil
 }
@@ -149,10 +146,7 @@ func (r *NomenclatureRepository) GetAllNmIDsByCategoryNames(categoryNames []stri
 		if err != nil {
 			return nil, err
 		}
-		items[globalID] = map[interface{}]interface{}{
-			"ID":   globalID,
-			"nmID": nmID,
-		}
+		items[globalID] = nmID
 	}
 	return items, nil
 }

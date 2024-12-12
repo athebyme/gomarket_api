@@ -22,5 +22,8 @@ func (b *BearerAuth) SetApiKey(request *http.Request) {
 }
 
 func NewBearerAuth(apiKey string) *BearerAuth {
+	if apiKey == "" {
+		return nil
+	}
 	return &BearerAuth{apiKey: apiKey}
 }

@@ -29,4 +29,6 @@ func (r *MediaRequest) FromNomenclature(nm response.Nomenclature) *MediaRequest 
 		Data: photos,
 	}
 }
-func (r *MediaRequest) ToBytes() ([]byte, error) { return json.Marshal(r) }
+func (r *MediaRequest) ToBytes() ([]byte, error) {
+	return json.Marshal(r)
+}

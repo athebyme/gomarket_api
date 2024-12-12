@@ -142,34 +142,38 @@ func (ts *TextService) ReduceToLength(input string, length int) string {
 	lastNonPrepositionIndex := -1
 
 	for i, word := range words {
-		if totalLength+len(word) > length {
+		wordLength := utf8.RuneCountInString(word) // Считаем длину в символах
+
+		// Проверяем, помещается ли слово
+		if totalLength+wordLength > length {
 			break
 		}
 
-		if _, ok := prepositions[strings.ToLower(word)]; ok && totalLength+len(word)+3 >= length {
-			break
-		}
-
-		if i > 0 {
+		// Добавляем пробел между словами, если это не первое слово
+		if i > 0 && totalLength+wordLength+1 < length {
 			builder.WriteString(" ")
-			totalLength++
+			totalLength++ // Учитываем пробел
 		}
 
+		// Добавляем слово в строку
 		builder.WriteString(word)
-		totalLength += len(word)
 
-		if _, ok := prepositions[strings.ToLower(word)]; !ok {
-			lastNonPrepositionIndex = builder.Len()
+		// Проверяем, является ли слово предлогом
+		if _, isPreposition := prepositions[strings.ToLower(word)]; !isPreposition {
+			lastNonPrepositionIndex = utf8.RuneCountInString(builder.String()) // Запоминаем индекс последнего непредлога
 		}
+
+		totalLength += wordLength
 	}
 
-	// избавляемся от предлога в конце
-	if lastNonPrepositionIndex != -1 && lastNonPrepositionIndex < builder.Len() {
+	// Убираем предлог в конце, если есть
+	if lastNonPrepositionIndex != -1 && lastNonPrepositionIndex < utf8.RuneCountInString(builder.String()) {
 		return builder.String()[:lastNonPrepositionIndex]
 	}
 
 	return builder.String()
 }
+
 func (ts *TextService) ClearAndReduce(input string, length int) string {
 	// Шаг 1: Удаляем все теги
 	cleaned := ts.RemoveAllTags(input)
@@ -196,7 +200,7 @@ func (ts *TextService) SmartReduceToLength(input string, length int) string {
 }
 
 func (ts *TextService) RemoveUnimportantSymbols(input string) string {
-	re := regexp.MustCompile(`[%№(),."'|/\-+&]`)
+	re := regexp.MustCompile(`[%№(),."'|/\&]`)
 	return re.ReplaceAllString(input, "")
 }
 

@@ -150,7 +150,6 @@ func (d *SearchEngine) GetNomenclaturesWithLimitConcurrentlyPutIntoChanel(settin
 								break
 							}
 						}
-
 						if err != nil {
 							log.Printf("Failed to get nomenclatures: %s", err)
 							mu.Unlock()

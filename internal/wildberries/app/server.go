@@ -19,7 +19,7 @@ import (
 )
 
 type WildberriesServer struct {
-	nomenclatureService *update.CardUpdateService
+	cardUpdateService *update.CardUpdateService
 	dbconnect.Database
 	config.WildberriesConfig
 	log    logger.Logger
@@ -44,13 +44,14 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	defer db.Close()
 
 	nomenclatureUpdGet := get.NewSearchEngine(db, authEngine, s.writer)
-	s.nomenclatureService = update.NewCardUpdateService(
+	s.cardUpdateService = update.NewCardUpdateService(
 		nomenclatureUpdGet,
 		service.NewTextService(),
 		"http://localhost:8081",
 		authEngine,
 		s.log,
 		parse.NewBrandServiceWildberries(s.WbBanned.BannedBrands),
+		s.WbValues,
 	)
 
 	migrationApply := []migration.MigrationInterface{
@@ -82,25 +83,31 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	//	time.Sleep(30 * time.Second)
 	//}
 	//
-	//_, err = s.nomenclatureService.UpdateCardMedia(request.Settings{
-	//	Sort:   request.Sort{Ascending: false},
-	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{"Lasciva", "Wisteria", "BANANZZA"}, ImtID: 0},
-	//	Cursor: request.Cursor{Limit: 11000},
-	//})
+
 	//
 	//time.Sleep(5 * time.Second)
 	//
-	//_, err = s.nomenclatureService.UpdateDBNomenclatures(request.Settings{
-	//	Sort:   request.Sort{Ascending: false},
-	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-	//	Cursor: request.Cursor{Limit: 16000},
-	//}, "")
-
-	_, err = s.nomenclatureService.UpdateCardNaming(request.Settings{
+	_, err = s.cardUpdateService.UpdateDBNomenclatures(request.Settings{
 		Sort:   request.Sort{Ascending: false},
 		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-		Cursor: request.Cursor{Limit: 1},
+		Cursor: request.Cursor{Limit: 10000},
+	}, "")
+	if err != nil {
+		return
+	}
+
+	_, err = s.cardUpdateService.UpdateCardMedia(request.Settings{
+		Sort:   request.Sort{Ascending: false},
+		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+		Cursor: request.Cursor{Limit: 4500},
 	})
+	//err = s.updateByCategoryId()
+
+	//_, err = s.cardUpdateService.UpdateCardNaming(request.Settings{
+	//	Sort:   request.Sort{Ascending: false},
+	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "id-31417-1277", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+	//	Cursor: request.Cursor{Limit: 1},
+	//})
 	if err != nil {
 		return
 	}
@@ -109,7 +116,7 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 
 func (s *WildberriesServer) updateNames() interface{} {
 	s.log.Log("Naming updater ")
-	updateMedia, err := s.nomenclatureService.UpdateCardNaming(request.Settings{
+	updateMedia, err := s.cardUpdateService.UpdateCardNaming(request.Settings{
 		Sort:   request.Sort{Ascending: false},
 		Filter: request.Filter{WithPhoto: 1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
 		Cursor: request.Cursor{Limit: 10000},
@@ -183,5 +190,31 @@ func (s *WildberriesServer) loadCharcs(db *sql.DB, engine services.AuthEngine) e
 		s.log.FatalLog(err.Error())
 		return err
 	}
+	return nil
+}
+
+func (s *WildberriesServer) updateByCategoryId() error {
+	updateAppellation, err := s.cardUpdateService.UpdateCardNaming(request.Settings{
+		Sort:   request.Sort{Ascending: false},
+		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{5067}, Brands: []string{}, ImtID: 0},
+		Cursor: request.Cursor{Limit: 1500},
+	})
+	updatePackages, err := s.cardUpdateService.UpdateCardPackages(request.Settings{
+		Sort:   request.Sort{Ascending: false},
+		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{5067}, Brands: []string{}, ImtID: 0},
+		Cursor: request.Cursor{Limit: 1500},
+	})
+	updateMedia, err := s.cardUpdateService.UpdateCardMedia(request.Settings{
+		Sort:   request.Sort{Ascending: false},
+		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{5067}, Brands: []string{}, ImtID: 0},
+		Cursor: request.Cursor{Limit: 1500},
+	})
+	if err != nil {
+		s.log.FatalLog("Error updating nomenclatures: %s\n", err)
+	}
+	s.log.Log(
+		"Updated appellations for %d nomenclatures\n"+
+			"Updated media for %d nomenclatures\n"+
+			"Updated packages for %d nomenclatures", updateAppellation, updateMedia, updatePackages)
 	return nil
 }

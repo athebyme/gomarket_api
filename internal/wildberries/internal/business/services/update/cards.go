@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"golang.org/x/time/rate"
+	"gomarketplace_api/config/values"
 	"gomarketplace_api/internal/wholesaler/pkg/clients"
 	"gomarketplace_api/internal/wholesaler/pkg/requests"
 	"gomarketplace_api/internal/wildberries/internal/business/models/dto/request"
@@ -33,16 +34,18 @@ type CardUpdateService struct {
 	wsclient            *clients2.WServiceClient
 	textService         service.ITextService
 	brandService        parse.BrandService
+	defaultValues       values.WildberriesValues
 	services.AuthEngine
 }
 
-func NewCardUpdateService(nservice *get.SearchEngine, textService service.ITextService, wsClientUrl string, auth services.AuthEngine, writer io.Writer, brandService parse.BrandService) *CardUpdateService {
+func NewCardUpdateService(nservice *get.SearchEngine, textService service.ITextService, wsClientUrl string, auth services.AuthEngine, writer io.Writer, brandService parse.BrandService, wbDefaultValues values.WildberriesValues) *CardUpdateService {
 	return &CardUpdateService{
 		nomenclatureService: *nservice,
 		wsclient:            clients2.NewWServiceClient(wsClientUrl, writer),
 		textService:         textService,
 		brandService:        brandService,
 		AuthEngine:          auth,
+		defaultValues:       wbDefaultValues,
 	}
 }
 
@@ -54,6 +57,7 @@ var updatedCount atomic.Int32
 func UpdateCards() (int, error) {
 	panic("TO DO")
 }
+
 func (cu *CardUpdateService) UpdateCardNaming(settings request.Settings) (int, error) {
 	const UPLOAD_SIZE = 2000
 	const MaxBatchSize = 1 << 20 // 1 MB
@@ -130,6 +134,116 @@ func (cu *CardUpdateService) UpdateCardNaming(settings request.Settings) (int, e
 					wbCard.Description = cu.textService.ClearAndReduce(description.(string), 2000)
 				} else {
 					wbCard.Description = cu.textService.ClearAndReduce(appellationsMap[globalId].(string), 2000)
+				}
+
+				mu.Lock()
+				gotData = append(gotData, nomenclature)
+				currentBatch = append(currentBatch, &wbCard)
+				currentBatchSize += len([]byte(wbCard.Title)) + len([]byte(wbCard.Description))
+				if len(currentBatch) >= UPLOAD_SIZE || currentBatchSize >= MaxBatchSize {
+					batchToSend := currentBatch
+					currentBatch = nil
+					currentBatchSize = 0
+					uploadChan <- batchToSend
+				}
+				mu.Unlock()
+			}
+		}(i)
+	}
+
+	// Горутин для отправки данных
+	uploadWg.Add(1)
+	go func() {
+		defer uploadWg.Done()
+		for batch := range uploadChan {
+			log.Println("Uploading batch of cards...")
+			// Лимитирование запросов на загрузку
+			if err := uploadToServerLimiter.Wait(context.Background()); err != nil {
+				log.Printf("Error waiting for rate limiter: %s", err)
+				return
+			}
+
+			cards, err := cu.processAndUpload(updateCardsUrl, batch)
+			if err != nil {
+				log.Printf("Error during uploading %s", err)
+				return
+			}
+			updatedCount.Add(int32(cards))
+		}
+	}()
+
+	processWg.Wait()
+
+	// Process remaining data
+	log.Println("Processing any remaining data...")
+	if len(currentBatch) > 0 {
+		log.Println("Uploading remaining batch of cards...")
+		uploadChan <- currentBatch
+		currentBatch = nil
+	}
+	close(uploadChan)
+	uploadWg.Wait()
+
+	log.Printf("Goroutines fetchers got (%d) nomenclautres", goroutinesNmsCount.Load())
+	log.Printf("Update completed, total updated count: %d. Unfetched count : %d", updatedCount.Load(), numberOfErroredNomenclatures.Load())
+	return int(updatedCount.Load()), nil
+}
+
+func (cu *CardUpdateService) UpdateCardPackages(settings request.Settings) (int, error) {
+	const UPLOAD_SIZE = 2000
+	const MaxBatchSize = 1 << 20 // 1 MB
+	const GOROUTINE_COUNT = 5
+	const REQUEST_RATE_LIMIT = 70 // 100 запросов в минуту = max
+	const UPLOAD_RATE_LIMIT = 10
+	var currentBatch []request.Model
+	var currentBatchSize int
+	var gotData []response.Nomenclature
+	var goroutinesNmsCount atomic.Int32
+
+	var processWg sync.WaitGroup
+	var uploadWg sync.WaitGroup
+	var mu sync.Mutex
+	var processedItems sync.Map
+	nomenclatureChan := make(chan response.Nomenclature)
+	uploadChan := make(chan []request.Model) // Канал для отправки данных
+
+	responseLimiter := rate.NewLimiter(rate.Every(time.Minute/REQUEST_RATE_LIMIT), REQUEST_RATE_LIMIT)
+	uploadToServerLimiter := rate.NewLimiter(rate.Every(time.Minute/UPLOAD_RATE_LIMIT), UPLOAD_RATE_LIMIT)
+
+	log.Println("Fetching and sending nomenclatures to the channel...")
+	go func() {
+		if err := cu.nomenclatureService.GetNomenclaturesWithLimitConcurrentlyPutIntoChanel(settings, "", nomenclatureChan, responseLimiter); err != nil {
+			log.Printf("Error fetching nomenclatures concurrently: %s", err)
+		}
+	}()
+
+	// Запуск горутин для обработки номенклатур
+	log.Println("Starting goroutines for processing nomenclatures...")
+	for i := 0; i < GOROUTINE_COUNT; i++ {
+		processWg.Add(1)
+		go func(i int) {
+			defer processWg.Done()
+			for nomenclature := range nomenclatureChan {
+				goroutinesNmsCount.Add(1)
+
+				var wbCard models.WildberriesCard
+				wbCard = *wbCard.FromNomenclature(nomenclature)
+				_, loaded := processedItems.LoadOrStore(wbCard.VendorCode, true)
+				if loaded {
+					continue // Если запись уже была обработана, пропускаем её
+				}
+
+				globalId, err := nomenclature.GlobalID()
+				if err != nil || globalId == 0 {
+					log.Printf("(G%d) (globalID=%s) parse error (not SPB aricular)", i, nomenclature.VendorCode)
+					numberOfErroredNomenclatures.Add(1)
+					continue
+				}
+
+				wbCard.Dimensions = response.DimensionWrapper{
+					Length: cu.defaultValues.PackageLength,
+					Width:  cu.defaultValues.PackageWidth,
+					Height: cu.defaultValues.PackageHeight,
 				}
 
 				mu.Lock()

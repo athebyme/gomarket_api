@@ -127,7 +127,10 @@ func (cu *CardUpdateService) UpdateCardNaming(settings request.Settings) (int, e
 				}
 
 				wbCard.Title = cu.textService.ClearAndReduce(appellationsMap[globalId].(string), 60)
+
 				changedBrand := cu.textService.ReplaceEngLettersToRus(" " + wbCard.Brand)
+				wbCard.Title = cu.textService.ReplaceSymbols(wbCard.Title, wbCard.Brand, changedBrand)
+
 				wbCard.Title = cu.textService.FitIfPossible(wbCard.Title, changedBrand, 60)
 
 				if description, ok := descriptionsMap[globalId]; ok && description != "" {
@@ -360,10 +363,15 @@ func (cu *CardUpdateService) UpdateCardMedia(settings request.Settings) (int, er
 
 				var urls []string
 				var ok bool
-				if urls, ok = mediaMap[globalId]; !ok && len(urls) < 0 {
-					log.Printf("(G%d) (globalID=%s) parse error (not SPB aricular)", i, nomenclature.VendorCode)
+				if urls, ok = mediaMap[globalId]; !ok && len(urls) <= 0 {
+					log.Printf("(G%d) (globalID=%s) not found urls !", i, nomenclature.VendorCode)
 					numberOfErroredNomenclatures.Add(1)
 					continue
+				}
+
+				// +1 photo (copy) if only 1 exits (to improve card quality)
+				if len(urls) == 1 {
+					urls = append(urls, urls[0])
 				}
 
 				mediaRequest := request.NewMediaRequest(nomenclature.NmID, urls)

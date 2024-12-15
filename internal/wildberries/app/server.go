@@ -98,8 +98,8 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 
 	_, err = s.cardUpdateService.UpdateCardMedia(request.Settings{
 		Sort:   request.Sort{Ascending: false},
-		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-		Cursor: request.Cursor{Limit: 15500},
+		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "id-23424-1366", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+		Cursor: request.Cursor{Limit: 1},
 	})
 	//err = s.updateByCategoryId()
 

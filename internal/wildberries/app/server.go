@@ -96,18 +96,18 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	//	return
 	//}
 
-	_, err = s.cardUpdateService.UpdateCardMedia(request.Settings{
-		Sort:   request.Sort{Ascending: false},
-		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "id-23424-1366", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-		Cursor: request.Cursor{Limit: 1},
-	})
-	//err = s.updateByCategoryId()
-
-	//_, err = s.cardUpdateService.UpdateCardNaming(request.Settings{
+	//_, err = s.cardUpdateService.UpdateCardMedia(request.Settings{
 	//	Sort:   request.Sort{Ascending: false},
-	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "id-31417-1277", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "id-23424-1366", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
 	//	Cursor: request.Cursor{Limit: 1},
 	//})
+	//err = s.updateByCategoryId()
+
+	_, err = s.cardUpdateService.UpdateCardNaming(request.Settings{
+		Sort:   request.Sort{Ascending: false},
+		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "id-25928-1366", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+		Cursor: request.Cursor{Limit: 1},
+	})
 	if err != nil {
 		return
 	}
@@ -118,8 +118,8 @@ func (s *WildberriesServer) updateNames() interface{} {
 	s.log.Log("Naming updater ")
 	updateMedia, err := s.cardUpdateService.UpdateCardNaming(request.Settings{
 		Sort:   request.Sort{Ascending: false},
-		Filter: request.Filter{WithPhoto: 1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-		Cursor: request.Cursor{Limit: 10000},
+		Filter: request.Filter{WithPhoto: 1, TagIDs: []int{}, TextSearch: "id-25928-1366", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+		Cursor: request.Cursor{Limit: 1},
 	})
 
 	if err != nil {

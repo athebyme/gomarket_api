@@ -131,15 +131,11 @@ func (cu *CardUpdateService) UpdateCardNaming(settings request.Settings) (int, e
 				changedBrand := cu.textService.ReplaceEngLettersToRus(wbCard.Brand)
 				ok, newTitle := cu.textService.ReplaceSymbols(wbCard.Title, map[string]string{wbCard.Brand: changedBrand})
 				if !ok {
-					ok, newTitle = cu.textService.ReplaceSymbols(wbCard.Title, map[string]string{wbCard.Brand: changedBrand})
-					if !ok {
-						ok, t := cu.textService.FitIfPossible(wbCard.Title, changedBrand, 60)
-						if ok {
-							newTitle = t
-						}
-					}
+					ok, newTitle = cu.textService.FitIfPossible(wbCard.Title, changedBrand, 60)
 				}
-				wbCard.Title = newTitle
+				if ok {
+					wbCard.Title = newTitle
+				}
 
 				if description, ok := descriptionsMap[globalId]; ok && description != "" {
 					wbCard.Description = cu.textService.ClearAndReduce(description.(string), 2000)

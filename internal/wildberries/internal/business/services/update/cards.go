@@ -365,6 +365,10 @@ func (cu *CardUpdateService) UpdateCardMedia(settings request.Settings) (int, er
 					continue
 				}
 
+				if len(nomenclature.Photos) != 1 {
+					continue
+				}
+
 				var urls []string
 				var ok bool
 				if urls, ok = mediaMap[globalId]; !ok && len(urls) <= 0 {
@@ -378,6 +382,9 @@ func (cu *CardUpdateService) UpdateCardMedia(settings request.Settings) (int, er
 					urls = append(urls, urls[0])
 				}
 
+				if len(urls) == 1 {
+					urls = append(urls, urls[0])
+				}
 				mediaRequest := request.NewMediaRequest(nomenclature.NmID, urls)
 
 				if err := responseLimiter.Wait(context.Background()); err != nil {

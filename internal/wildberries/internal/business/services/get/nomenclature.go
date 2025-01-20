@@ -16,8 +16,11 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
+
+const WorkerCount = 5
 
 // SearchEngine -- сервис по работе с номенклатурами. get-update
 type SearchEngine struct {
@@ -71,130 +74,273 @@ func (d *SearchEngine) GetNomenclatures(settings request.Settings, locale string
 	return &nomenclatureResponse, nil
 }
 
-func (d *SearchEngine) GetNomenclaturesWithLimitConcurrentlyPutIntoChanel(settings request.Settings, locale string, nomenclatureChan chan<- response.Nomenclature, responseLimiter *rate.Limiter) error {
+func (d *SearchEngine) GetNomenclaturesWithLimitConcurrentlyPutIntoChanel(
+	ctx context.Context,
+	settings request.Settings,
+	locale string,
+	nomenclatureChan chan<- response.Nomenclature,
+	responseLimiter *rate.Limiter,
+) error {
 	limit := settings.Cursor.Limit
-
 	log.Printf("Getting wildberries nomenclatures with limit: %d", limit)
 
-	client := clients.NewGlobalIDsClient("http://localhost:8081", d.writer)
+	globalIDsMap, err := d.prepareGlobalIDs()
+	if err != nil {
+		return fmt.Errorf("failed to prepare global IDs: %w", err)
+	}
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Создаем пакеты и канал задач
+	packetSizes := divideLimitsToPackets(limit, 100)
+	taskChan := make(chan task, len(packetSizes)) // Буферизированный канал для задач
+	errChan := make(chan error, WorkerCount)
+	cursorChan := make(chan request.Cursor, 1)
+
+	// синхронизация
+	var (
+		mu             sync.Mutex
+		wg             sync.WaitGroup
+		totalProcessed atomic.Int32
+	)
+
+	// Запускаем фиксированное количество воркеров
+	for i := 0; i < WorkerCount; i++ {
+		wg.Add(1)
+		go d.worker(
+			ctx,
+			i,
+			&wg,
+			taskChan,
+			nomenclatureChan,
+			errChan,
+			responseLimiter,
+			settings,
+			locale,
+			limit,
+			&totalProcessed,
+			&cursorChan,
+			globalIDsMap,
+			&mu,
+		)
+	}
+
+	// убрать magic number
+	cursorChan <- request.Cursor{NmID: 0, UpdatedAt: "", Limit: 100}
+
+	// Отправляем задачи в канал
+	go func() {
+		var lastNmID int
+		var lastUpdatedAt string
+
+		for _, size := range packetSizes {
+			var nmTask task
+			select {
+			case <-ctx.Done():
+				return
+			case changedCursor := <-cursorChan:
+				mu.Lock()
+				lastNmID = changedCursor.NmID
+				lastUpdatedAt = changedCursor.UpdatedAt
+				mu.Unlock()
+
+				nmTask = task{
+					limit: size,
+					cursor: request.Cursor{
+						NmID:      lastNmID,
+						UpdatedAt: lastUpdatedAt,
+						Limit:     size,
+					},
+				}
+
+				if err != nil {
+					errChan <- fmt.Errorf("failed to parse last updated timestamp: %w", err)
+					return
+				}
+				taskChan <- nmTask
+			}
+		}
+		close(taskChan)
+	}()
+
+	// Ожидание завершения всех горутин или ошибки
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-errChan:
+		cancel()
+		return err
+	case <-done:
+		close(nomenclatureChan)
+		return nil
+	}
+}
+
+// Структура для передачи задач воркерам
+type task struct {
+	limit  int
+	cursor request.Cursor
+}
+
+func (d *SearchEngine) worker(
+	ctx context.Context,
+	workerID int,
+	wg *sync.WaitGroup,
+	taskChan <-chan task,
+	nomenclatureChan chan<- response.Nomenclature,
+	errChan chan<- error,
+	responseLimiter *rate.Limiter,
+	settings request.Settings,
+	locale string,
+	totalLimit int,
+	totalProcessed *atomic.Int32,
+	cursorChan *chan request.Cursor,
+	globalIDsMap map[int]struct{},
+	mu *sync.Mutex,
+) {
+	defer wg.Done()
+
+	for task := range taskChan {
+		if err := d.processTask(
+			ctx,
+			workerID,
+			task,
+			nomenclatureChan,
+			responseLimiter,
+			settings,
+			locale,
+			totalLimit,
+			totalProcessed,
+			cursorChan,
+			globalIDsMap,
+			mu,
+		); err != nil {
+			select {
+			case errChan <- err:
+			default:
+			}
+			return
+		}
+	}
+}
+
+func (d *SearchEngine) processTask(
+	ctx context.Context,
+	workerID int,
+	task task,
+	nomenclatureChan chan<- response.Nomenclature,
+	responseLimiter *rate.Limiter,
+	settings request.Settings,
+	locale string,
+	totalLimit int,
+	totalProcessed *atomic.Int32,
+	cursorChan *chan request.Cursor,
+	globalIDsMap map[int]struct{},
+	mu *sync.Mutex,
+) error {
+	if err := responseLimiter.Wait(ctx); err != nil {
+		return fmt.Errorf("rate limiter error: %w", err)
+	}
+
+	settings.Cursor = task.cursor
+	log.Printf("Worker %d: Fetching nomenclatures with cursor: NmID=%d, UpdatedAt=%v, Limit=%d",
+		workerID, task.cursor.NmID, task.cursor.UpdatedAt, task.cursor.Limit)
+
+	nomenclatureResponse, err := d.retryGetNomenclatures(ctx, settings, &task.cursor, locale)
+	if err != nil {
+		return fmt.Errorf("failed to get nomenclatures: %w", err)
+	}
+
+	if len(nomenclatureResponse.Data) == 0 {
+		log.Printf("Worker %d: No more data to process", workerID)
+		return nil
+	}
+
+	lastNomenclature := nomenclatureResponse.Data[len(nomenclatureResponse.Data)-1]
+	*cursorChan <- request.Cursor{NmID: lastNomenclature.NmID, UpdatedAt: lastNomenclature.UpdatedAt}
+
+	for _, nomenclature := range nomenclatureResponse.Data {
+		mu.Lock()
+		if _, exists := globalIDsMap[nomenclature.NmID]; !exists {
+			continue
+		}
+		mu.Unlock()
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case nomenclatureChan <- nomenclature:
+			if totalProcessed.Add(1) >= int32(totalLimit) {
+				log.Printf("Total processed items have reached the limit (%d)", totalLimit)
+				return nil
+			}
+		}
+	}
+
+	return nil
+}
+
+func (d *SearchEngine) retryGetNomenclatures(
+	ctx context.Context,
+	settings request.Settings,
+	cursor *request.Cursor,
+	locale string,
+) (*responses.NomenclatureResponse, error) {
+	const (
+		maxRetries    = 3
+		retryInterval = 2 * time.Second
+	)
+
+	var lastErr error
+	for retry := 0; retry < maxRetries; retry++ {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		settings.Cursor = *cursor
+		nomenclatureResponse, err := d.GetNomenclatures(settings, locale)
+		if err == nil {
+			return nomenclatureResponse, nil
+		}
+
+		if !strings.Contains(err.Error(), "wsarecv: An established connection was aborted") {
+			return nil, err
+		}
+
+		lastErr = err
+		log.Printf("Retrying to get nomenclatures due to connection error. Attempt: %d", retry+1)
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(retryInterval):
+		}
+	}
+
+	return nil, fmt.Errorf("failed after %d retries: %w", maxRetries, lastErr)
+}
+
+func (d *SearchEngine) prepareGlobalIDs() (map[int]struct{}, error) {
+	client := clients.NewGlobalIDsClient("http://localhost:8081", d.writer)
 	globalIDs, err := client.FetchGlobalIDs()
 	if err != nil {
-		log.Fatalf("Error fetching Global IDs: %s", err)
+		return nil, fmt.Errorf("error fetching Global IDs: %w", err)
 	}
+
 	globalIDsMap := make(map[int]struct{}, len(globalIDs))
 	for _, globalID := range globalIDs {
 		globalIDsMap[globalID] = struct{}{}
 	}
-
-	cursor := request.Cursor{Limit: limit}
-	packetSizes := divideLimitsToPackets(limit, 100)
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	var activeGoroutines int
-	limitChan := make(chan int, len(packetSizes))
-	doneOnce := sync.Once{}
-	totalProcessed := 0 // Переменная для отслеживания общего количества добавленных элементов
-	log.Printf("Packet sizes: %v", packetSizes)
-
-	// Горутина для передачи данных в канал
-	for i := 0; i < len(packetSizes); i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			mu.Lock()
-			activeGoroutines++
-			mu.Unlock()
-			defer func() {
-				mu.Lock()
-				activeGoroutines--
-				if activeGoroutines == 0 {
-					log.Printf("It seems that we got all items.")
-					doneOnce.Do(func() { close(nomenclatureChan) })
-				}
-				mu.Unlock()
-			}()
-
-			for {
-				select {
-				case packetLimit, ok := <-limitChan:
-					if !ok {
-						log.Printf("Goroutine %d: limitChan closed", i)
-						return
-					}
-
-					if err := responseLimiter.Wait(context.Background()); err != nil {
-						log.Printf("Rate limiter error: %s", err)
-						return
-					}
-
-					for {
-						mu.Lock()
-						cursor.Limit = packetLimit
-						log.Printf("Goroutine %d: Fetching nomenclatures with packetLimit %d", i, packetLimit)
-						log.Printf("Cursor state before request: NmID=%d, UpdatedAt=%v", cursor.NmID, cursor.UpdatedAt)
-
-						var nomenclatureResponse *responses.NomenclatureResponse
-						goroutineSettingsRequest := settings
-						goroutineSettingsRequest.Cursor = cursor
-						var err error
-						retryCount := 0
-						maxRetries := 3
-						for retryCount < maxRetries {
-							nomenclatureResponse, err = d.GetNomenclatures(goroutineSettingsRequest, locale)
-							if err != nil && strings.Contains(err.Error(), "wsarecv: An established connection was aborted by the software in your host machine") {
-								retryCount++
-								log.Printf("Retrying to get nomenclatures due to connection error. Attempt: %d", retryCount)
-								time.Sleep(2 * time.Second) // Задержка перед повторной попыткой
-							} else {
-								break
-							}
-						}
-						if err != nil {
-							log.Printf("Failed to get nomenclatures: %s", err)
-							mu.Unlock()
-							return
-						}
-
-						numItems := len(nomenclatureResponse.Data)
-						if numItems == 0 {
-							log.Printf("No more data to process. Finishing this job ..")
-							mu.Unlock()
-							return
-						}
-
-						log.Printf("Goroutine %d has done the job! (lastNmID=%d, count=%d)", i, nomenclatureResponse.Data[len(nomenclatureResponse.Data)-1].NmID, numItems)
-						cursor.UpdatedAt = nomenclatureResponse.Data[len(nomenclatureResponse.Data)-1].UpdatedAt
-						cursor.NmID = nomenclatureResponse.Data[len(nomenclatureResponse.Data)-1].NmID
-						log.Printf("Cursor state after request: NmID=%d, UpdatedAt=%v", cursor.NmID, cursor.UpdatedAt)
-						totalProcessed += numItems // Увеличиваем общее количество обработанных товаров
-						mu.Unlock()
-
-						for _, nomenclature := range nomenclatureResponse.Data {
-							nomenclatureChan <- nomenclature
-						}
-
-						// Проверка: если общее количество обработанных товаров меньше лимита, то завершить обработку
-						if totalProcessed >= limit {
-							log.Printf("Total processed items (%d) have reached or exceeded the Limit (%d)", totalProcessed, limit)
-							return
-						}
-
-						break
-					}
-				}
-			}
-		}(i)
-	}
-
-	for _, limit := range packetSizes {
-		limitChan <- limit
-		log.Printf("Sent limit %d to limitChan", limit)
-	}
-	close(limitChan)
-	wg.Wait()
-
-	return nil
+	return globalIDsMap, nil
 }
 
 /*
@@ -226,9 +372,12 @@ func (d *SearchEngine) UploadToDb(settings request.Settings, locale string) (int
 	}
 
 	nomenclatureChan := make(chan response.Nomenclature)
+	ctx, cancel := context.WithCancel(context.Background())
 	log.Println("Fetching and sending nomenclatures to the channel...")
+
+	defer cancel()
 	go func() {
-		if err := d.GetNomenclaturesWithLimitConcurrentlyPutIntoChanel(settings, locale, nomenclatureChan, responseLimiter); err != nil {
+		if err := d.GetNomenclaturesWithLimitConcurrentlyPutIntoChanel(ctx, settings, locale, nomenclatureChan, responseLimiter); err != nil {
 			log.Printf("Error fetching nomenclatures concurrently: %s", err)
 		}
 	}()

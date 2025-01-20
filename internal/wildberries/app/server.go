@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"database/sql"
 	"gomarketplace_api/build/_postgres"
 	"gomarketplace_api/config"
@@ -87,36 +88,38 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	//
 	//time.Sleep(5 * time.Second)
 	//
-	//_, err = s.cardUpdateService.UpdateDBNomenclatures(request.Settings{
-	//	Sort:   request.Sort{Ascending: false},
-	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-	//	Cursor: request.Cursor{Limit: 10000},
-	//}, "")
-	//if err != nil {
-	//	return
-	//}
-
-	_, err = s.cardUpdateService.UpdateCardMedia(request.Settings{
+	_, err = s.cardUpdateService.UpdateDBNomenclatures(request.Settings{
 		Sort:   request.Sort{Ascending: false},
 		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-		Cursor: request.Cursor{Limit: 10500},
-	})
+		Cursor: request.Cursor{Limit: 10000},
+	}, "")
+	if err != nil {
+		return
+	}
+
+	//_, err = s.cardUpdateService.UpdateCardMedia(request.Settings{
+	//	Sort:   request.Sort{Ascending: false},
+	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+	//	Cursor: request.Cursor{Limit: 10500},
+	//})
 	//err = s.updateByCategoryId()
 
 	//_, err = s.cardUpdateService.UpdateCardNaming(request.Settings{
 	//	Sort:   request.Sort{Ascending: false},
-	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "id-31417-1277", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-	//	Cursor: request.Cursor{Limit: 1},
+	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+	//	Cursor: request.Cursor{Limit: 10000},
 	//})
-	if err != nil {
-		return
-	}
+	//if err != nil {
+	//	return
+	//}
 
 }
 
 func (s *WildberriesServer) updateNames() interface{} {
 	s.log.Log("Naming updater ")
-	updateMedia, err := s.cardUpdateService.UpdateCardNaming(request.Settings{
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	updateMedia, err := s.cardUpdateService.UpdateCardNaming(ctx, request.Settings{
 		Sort:   request.Sort{Ascending: false},
 		Filter: request.Filter{WithPhoto: 1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
 		Cursor: request.Cursor{Limit: 10000},
@@ -194,7 +197,9 @@ func (s *WildberriesServer) loadCharcs(db *sql.DB, engine services.AuthEngine) e
 }
 
 func (s *WildberriesServer) updateByCategoryId() error {
-	updateAppellation, err := s.cardUpdateService.UpdateCardNaming(request.Settings{
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	updateAppellation, err := s.cardUpdateService.UpdateCardNaming(ctx, request.Settings{
 		Sort:   request.Sort{Ascending: false},
 		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{5067}, Brands: []string{}, ImtID: 0},
 		Cursor: request.Cursor{Limit: 1500},

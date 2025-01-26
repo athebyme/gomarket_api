@@ -5,12 +5,12 @@ import (
 	"database/sql"
 	"gomarketplace_api/build/_postgres"
 	"gomarketplace_api/config"
-	"gomarketplace_api/internal/wildberries/internal/business/models/dto/request"
-	"gomarketplace_api/internal/wildberries/internal/business/services"
-	"gomarketplace_api/internal/wildberries/internal/business/services/get"
-	"gomarketplace_api/internal/wildberries/internal/business/services/parse"
-	"gomarketplace_api/internal/wildberries/internal/business/services/update"
-	"gomarketplace_api/internal/wildberries/internal/storage"
+	request2 "gomarketplace_api/internal/wildberries/business/models/dto/request"
+	"gomarketplace_api/internal/wildberries/business/services"
+	get2 "gomarketplace_api/internal/wildberries/business/services/get"
+	"gomarketplace_api/internal/wildberries/business/services/parse"
+	update2 "gomarketplace_api/internal/wildberries/business/services/update"
+	"gomarketplace_api/internal/wildberries/storage"
 	"gomarketplace_api/pkg/business/service"
 	"gomarketplace_api/pkg/dbconnect"
 	"gomarketplace_api/pkg/dbconnect/migration"
@@ -20,7 +20,7 @@ import (
 )
 
 type WildberriesServer struct {
-	cardUpdateService *update.CardUpdateService
+	cardUpdateService *update2.CardUpdateService
 	dbconnect.Database
 	config.WildberriesConfig
 	log    logger.Logger
@@ -44,8 +44,8 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	}
 	defer db.Close()
 
-	nomenclatureUpdGet := get.NewSearchEngine(db, authEngine, s.writer)
-	s.cardUpdateService = update.NewCardUpdateService(
+	nomenclatureUpdGet := get2.NewSearchEngine(db, authEngine, s.writer)
+	s.cardUpdateService = update2.NewCardUpdateService(
 		nomenclatureUpdGet,
 		service.NewTextService(),
 		"http://localhost:8081",
@@ -88,14 +88,27 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	//
 	//time.Sleep(5 * time.Second)
 	//
-	_, err = s.cardUpdateService.UpdateDBNomenclatures(request.Settings{
-		Sort:   request.Sort{Ascending: false},
-		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-		Cursor: request.Cursor{Limit: 10000},
+	//_, err = s.cardUpdateService.UpdateDBNomenclatures(request2.Settings{
+	//	Sort:   request2.Sort{Ascending: false},
+	//	Filter: request2.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+	//	Cursor: request2.Cursor{Limit: 10000},
+	//}, "")
+	//if err != nil {
+	//	return
+	//}
+
+	count, err := s.cardUpdateService.CheckSearchEngine(request2.Settings{
+		Sort:   request2.Sort{Ascending: false},
+		Filter: request2.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+		Cursor: request2.Cursor{Limit: 10000},
 	}, "")
 	if err != nil {
 		return
 	}
+
+	log.Printf("Search engine found %d nm's", count)
+
+	//s.log.Log("Database data is up to date. ")
 
 	//_, err = s.cardUpdateService.UpdateCardMedia(request.Settings{
 	//	Sort:   request.Sort{Ascending: false},
@@ -119,10 +132,10 @@ func (s *WildberriesServer) updateNames() interface{} {
 	s.log.Log("Naming updater ")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	updateMedia, err := s.cardUpdateService.UpdateCardNaming(ctx, request.Settings{
-		Sort:   request.Sort{Ascending: false},
-		Filter: request.Filter{WithPhoto: 1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-		Cursor: request.Cursor{Limit: 10000},
+	updateMedia, err := s.cardUpdateService.UpdateCardNaming(ctx, request2.Settings{
+		Sort:   request2.Sort{Ascending: false},
+		Filter: request2.Filter{WithPhoto: 1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+		Cursor: request2.Cursor{Limit: 10000},
 	})
 
 	if err != nil {
@@ -141,11 +154,11 @@ func (s *WildberriesServer) uploadProducts(auth services.AuthEngine, categoryID 
 		s.log.FatalLog("Error connecting to PostgreSQL: %s\n", err)
 	}
 
-	engine := get.NewSearchEngine(db, auth, s.writer)
+	engine := get2.NewSearchEngine(db, auth, s.writer)
 	repo := storage.NewNomenclatureRepository(db)
 
-	nmService := update.NewNomenclatureService(*engine, *repo)
-	cardService := update.NewCardService(wsUrl, textService, s.writer, s.WildberriesConfig)
+	nmService := update2.NewNomenclatureService(*engine, *repo)
+	cardService := update2.NewCardService(wsUrl, textService, s.writer, s.WildberriesConfig)
 
 	accuracy := float32(0.3)
 	result, err := nmService.GetSetOfUncreatedItemsWithCategories(accuracy, true, categoryID)
@@ -160,9 +173,9 @@ func (s *WildberriesServer) uploadProducts(auth services.AuthEngine, categoryID 
 		return nil
 	}
 
-	req := []request.CreateCardRequestWrapper{}
-	for i, v := range resultIDs.([]request.CreateCardRequestData) {
-		req = append(req, request.CreateCardRequestWrapper{})
+	req := []request2.CreateCardRequestWrapper{}
+	for i, v := range resultIDs.([]request2.CreateCardRequestData) {
+		req = append(req, request2.CreateCardRequestWrapper{})
 		req[i].Variants = append(req[i].Variants, v)
 		req[i].SubjectID = categoryID
 	}
@@ -172,13 +185,13 @@ func (s *WildberriesServer) uploadProducts(auth services.AuthEngine, categoryID 
 		return nil
 	}
 
-	s.log.Log("Category %d. Total count of items : %d", categoryID, len(resultIDs.([]request.CreateCardRequestData)))
+	s.log.Log("Category %d. Total count of items : %d", categoryID, len(resultIDs.([]request2.CreateCardRequestData)))
 	return struct{}{}
 }
 
 func (s *WildberriesServer) loadCharcs(db *sql.DB, engine services.AuthEngine) error {
-	charcUpdate := get.NewUpdateDBCharcs(db, *get.NewCharacteristicService(engine))
-	catsRepo := get.NewDBCategories(db)
+	charcUpdate := get2.NewUpdateDBCharcs(db, *get2.NewCharacteristicService(engine))
+	catsRepo := get2.NewDBCategories(db)
 	cats, err := catsRepo.Categories()
 	if err != nil {
 		s.log.FatalLog(err.Error())
@@ -199,20 +212,20 @@ func (s *WildberriesServer) loadCharcs(db *sql.DB, engine services.AuthEngine) e
 func (s *WildberriesServer) updateByCategoryId() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	updateAppellation, err := s.cardUpdateService.UpdateCardNaming(ctx, request.Settings{
-		Sort:   request.Sort{Ascending: false},
-		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{5067}, Brands: []string{}, ImtID: 0},
-		Cursor: request.Cursor{Limit: 1500},
+	updateAppellation, err := s.cardUpdateService.UpdateCardNaming(ctx, request2.Settings{
+		Sort:   request2.Sort{Ascending: false},
+		Filter: request2.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{5067}, Brands: []string{}, ImtID: 0},
+		Cursor: request2.Cursor{Limit: 1500},
 	})
-	updatePackages, err := s.cardUpdateService.UpdateCardPackages(request.Settings{
-		Sort:   request.Sort{Ascending: false},
-		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{5067}, Brands: []string{}, ImtID: 0},
-		Cursor: request.Cursor{Limit: 1500},
+	updatePackages, err := s.cardUpdateService.UpdateCardPackages(request2.Settings{
+		Sort:   request2.Sort{Ascending: false},
+		Filter: request2.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{5067}, Brands: []string{}, ImtID: 0},
+		Cursor: request2.Cursor{Limit: 1500},
 	})
-	updateMedia, err := s.cardUpdateService.UpdateCardMedia(request.Settings{
-		Sort:   request.Sort{Ascending: false},
-		Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{5067}, Brands: []string{}, ImtID: 0},
-		Cursor: request.Cursor{Limit: 1500},
+	updateMedia, err := s.cardUpdateService.UpdateCardMedia(request2.Settings{
+		Sort:   request2.Sort{Ascending: false},
+		Filter: request2.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{5067}, Brands: []string{}, ImtID: 0},
+		Cursor: request2.Cursor{Limit: 1500},
 	})
 	if err != nil {
 		s.log.FatalLog("Error updating nomenclatures: %s\n", err)

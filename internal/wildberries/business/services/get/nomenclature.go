@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"golang.org/x/time/rate"
 	"gomarketplace_api/internal/wholesaler/pkg/clients"
@@ -21,18 +22,44 @@ import (
 )
 
 const (
-	WorkerCount = 5
+	WorkerCount    = 5
+	MaxRetries     = 3
+	RetryInterval  = 2 * time.Second
+	RequestTimeout = 100 * time.Second
 )
 
-// SearchEngine -- сервис по работе с номенклатурами. get-update
-type SearchEngine struct {
-	db *sql.DB
-	services.AuthEngine
-	writer io.Writer
+var (
+	ErrNoMoreData         = errors.New("no more data to process")
+	ErrRateLimiter        = errors.New("rate limiter error")
+	ErrConnectionAborted  = errors.New("connection aborted")
+	ErrTotalLimitReached  = errors.New("total limit reached")
+	ErrContextCanceled    = errors.New("context canceled")
+	ErrFailedAfterRetries = errors.New("failed after retries")
+)
+
+type Config struct {
+	WorkerCount    int
+	MaxRetries     int
+	RetryInterval  time.Duration
+	RequestTimeout time.Duration
 }
 
-func NewSearchEngine(db *sql.DB, auth services.AuthEngine, writer io.Writer) *SearchEngine {
-	return &SearchEngine{db: db, AuthEngine: auth, writer: writer}
+type SearchEngine struct {
+	db      *sql.DB
+	auth    services.AuthEngine
+	writer  io.Writer
+	config  Config
+	limiter *rate.Limiter
+}
+
+func NewSearchEngine(db *sql.DB, auth services.AuthEngine, writer io.Writer, config Config) *SearchEngine {
+	return &SearchEngine{
+		db:      db,
+		auth:    auth,
+		writer:  writer,
+		config:  config,
+		limiter: rate.NewLimiter(rate.Every(time.Minute), 70), // Пример: 10 запросов в секунду
+	}
 }
 
 const postNomenclature = "https://content-api.wildberries.ru/content/v2/get/cards/list"
@@ -43,7 +70,7 @@ func (d *SearchEngine) GetNomenclatures(settings request2.Settings, locale strin
 		url = fmt.Sprintf("%s?locale=%s", url, locale)
 	}
 
-	client := &http.Client{Timeout: 100 * time.Second}
+	client := &http.Client{Timeout: d.config.RequestTimeout}
 
 	requestBody, err := settings.CreateRequestBody()
 	if err != nil {
@@ -52,15 +79,15 @@ func (d *SearchEngine) GetNomenclatures(settings request2.Settings, locale strin
 
 	req, err := http.NewRequest("POST", url, requestBody)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
-	d.SetApiKey(req)
+	d.auth.SetApiKey(req)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executing request: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -70,7 +97,7 @@ func (d *SearchEngine) GetNomenclatures(settings request2.Settings, locale strin
 
 	var nomenclatureResponse responses.NomenclatureResponse
 	if err := json.NewDecoder(resp.Body).Decode(&nomenclatureResponse); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decoding response: %w", err)
 	}
 
 	return &nomenclatureResponse, nil
@@ -114,11 +141,8 @@ func (d *SearchEngine) GetNomenclaturesWithLimitConcurrentlyPutIntoChannel(
 	settings request2.Settings,
 	locale string,
 	nomenclatureChan chan<- response.Nomenclature,
-	responseLimiter *rate.Limiter,
 ) error {
-	defer func() {
-		log.Printf("Search engine finished its job.")
-	}()
+	defer log.Printf("Search engine finished its job.")
 
 	limit := settings.Cursor.Limit
 	log.Printf("Getting Wildberries nomenclatures with limit: %d", limit)
@@ -131,30 +155,25 @@ func (d *SearchEngine) GetNomenclaturesWithLimitConcurrentlyPutIntoChannel(
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// создаем потокобезопасный менеджер курсоров
 	cursorManager := NewSafeCursorManager()
-
-	packetSizes := divideLimitsToPackets(limit, 100)
-	taskChan := make(chan request2.Cursor, len(packetSizes))
-	errChan := make(chan error, WorkerCount)
-	done := make(chan struct{})
+	taskChan := make(chan request2.Cursor, d.config.WorkerCount)
+	errChan := make(chan error, d.config.WorkerCount)
 
 	var (
 		wg             sync.WaitGroup
 		totalProcessed atomic.Int32
 	)
 
-	// запускаем воркеров
-	for i := 0; i < WorkerCount; i++ {
+	// Запускаем воркеров
+	for i := 0; i < d.config.WorkerCount; i++ {
 		wg.Add(1)
 		go d.safeWorker(
 			ctx,
 			i,
 			&wg,
-			taskChan,
+			taskChan, // Канал для чтения
 			nomenclatureChan,
 			errChan,
-			responseLimiter,
 			settings,
 			locale,
 			limit,
@@ -164,56 +183,38 @@ func (d *SearchEngine) GetNomenclaturesWithLimitConcurrentlyPutIntoChannel(
 		)
 	}
 
-	// начальный курсор
-	initialCursor := request2.Cursor{NmID: 0, UpdatedAt: "", Limit: 100}
-	taskChan <- initialCursor
+	// Запускаем начальную задачу
+	taskChan <- request2.Cursor{NmID: 0, UpdatedAt: "", Limit: 100}
 
-	// распределение задач
-	go func() {
-		defer close(taskChan)
-		for _, size := range packetSizes {
-			select {
-			case <-ctx.Done():
-				return
-			case cursor := <-taskChan:
-				cursor.Limit = size
-				taskChan <- cursor
-			}
-		}
-	}()
-
-	// ожидание завершения
+	// Отдельная goroutine для завершения работы
 	go func() {
 		wg.Wait()
-		close(done)
+		close(nomenclatureChan)
+		close(errChan)
 	}()
 
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case err := <-errChan:
-			if !strings.Contains(err.Error(), "OK. worker") {
-				cancel()
-				close(nomenclatureChan)
-				return err
-			}
-			return nil
-		case <-done:
-			close(nomenclatureChan)
-			return nil
+	// Обработка результатов
+	for err := range errChan {
+		if err == nil {
+			continue
 		}
+		if errors.Is(err, ErrNoMoreData) || errors.Is(err, ErrTotalLimitReached) {
+			continue
+		}
+		cancel()
+		return fmt.Errorf("worker error: %w", err)
 	}
+
+	return nil
 }
 
 func (d *SearchEngine) safeWorker(
 	ctx context.Context,
 	workerID int,
 	wg *sync.WaitGroup,
-	taskChan chan request2.Cursor,
+	taskChan <-chan request2.Cursor, // Только для чтения
 	nomenclatureChan chan<- response.Nomenclature,
 	errChan chan<- error,
-	responseLimiter *rate.Limiter,
 	settings request2.Settings,
 	locale string,
 	totalLimit int,
@@ -222,34 +223,51 @@ func (d *SearchEngine) safeWorker(
 	cursorManager *SafeCursorManager,
 ) {
 	defer func() {
-		log.Println(fmt.Sprintf("Worker's %d job is done.", workerID))
+		log.Printf("Worker %d: job is done.", workerID)
 		wg.Done()
 	}()
 
-	for cursor := range taskChan {
-		uniqueCursor, ok := cursorManager.GetUniqueCursor(cursor.NmID, cursor.UpdatedAt)
-		if !ok {
-			continue
-		}
+	// Создаем канал для записи
+	writeTaskChan := make(chan request2.Cursor, WorkerCount)
+	defer close(writeTaskChan)
 
-		if err := d.processSafeCursorTask(
-			ctx,
-			workerID,
-			uniqueCursor,
-			nomenclatureChan,
-			responseLimiter,
-			settings,
-			locale,
-			totalLimit,
-			totalProcessed,
-			taskChan,
-			globalIDsMap,
-		); err != nil {
-			select {
-			case errChan <- err:
-			default:
-			}
+	for {
+		select {
+		case <-ctx.Done():
+			errChan <- ErrContextCanceled
 			return
+		case cursor, ok := <-taskChan:
+			if !ok {
+				return
+			}
+
+			uniqueCursor, ok := cursorManager.GetUniqueCursor(cursor.NmID, cursor.UpdatedAt)
+			if !ok {
+				continue
+			}
+
+			err := d.processSafeCursorTask(
+				ctx,
+				workerID,
+				uniqueCursor,
+				nomenclatureChan,
+				settings,
+				locale,
+				totalLimit,
+				totalProcessed,
+				writeTaskChan, // Передаем канал для записи
+				globalIDsMap,
+			)
+
+			select {
+			case <-ctx.Done():
+				errChan <- ErrContextCanceled
+				return
+			case errChan <- err:
+				if err != nil && !errors.Is(err, ErrNoMoreData) && !errors.Is(err, ErrTotalLimitReached) {
+					return
+				}
+			}
 		}
 	}
 }
@@ -259,16 +277,15 @@ func (d *SearchEngine) processSafeCursorTask(
 	workerID int,
 	cursor request2.Cursor,
 	nomenclatureChan chan<- response.Nomenclature,
-	responseLimiter *rate.Limiter,
 	settings request2.Settings,
 	locale string,
 	totalLimit int,
 	totalProcessed *atomic.Int32,
-	taskChan chan<- request2.Cursor,
+	taskChan chan<- request2.Cursor, // Изменено на chan<-
 	globalIDsMap map[int]struct{},
 ) error {
-	if err := responseLimiter.Wait(ctx); err != nil {
-		return fmt.Errorf("rate limiter error: %w", err)
+	if err := d.limiter.Wait(ctx); err != nil {
+		return fmt.Errorf("%w: %v", ErrRateLimiter, err)
 	}
 
 	settings.Cursor = cursor
@@ -277,25 +294,35 @@ func (d *SearchEngine) processSafeCursorTask(
 
 	nomenclatureResponse, err := d.retryGetNomenclatures(ctx, settings, &cursor, locale)
 	if err != nil {
+		if errors.Is(err, ErrContextCanceled) {
+			return err
+		}
 		return fmt.Errorf("failed to get nomenclatures: %w", err)
 	}
 
 	if len(nomenclatureResponse.Data) == 0 {
-		return fmt.Errorf("OK. worker %d: No more data to process", workerID)
+		return ErrNoMoreData
 	}
 
 	lastNomenclature := nomenclatureResponse.Data[len(nomenclatureResponse.Data)-1]
 
-	// отправляем следующий курсор в канал задач
-	select {
-	case taskChan <- request2.Cursor{
-		NmID:      lastNomenclature.NmID,
-		UpdatedAt: lastNomenclature.UpdatedAt,
-	}:
-	default:
+	if totalProcessed.Load() < int32(totalLimit) {
+		select {
+		case taskChan <- request2.Cursor{ // Теперь это допустимо
+			NmID:      lastNomenclature.NmID,
+			UpdatedAt: lastNomenclature.UpdatedAt,
+			Limit:     cursor.Limit,
+		}:
+		case <-ctx.Done():
+			return ErrContextCanceled
+		}
 	}
 
 	for _, nomenclature := range nomenclatureResponse.Data {
+		if totalProcessed.Load() >= int32(totalLimit) {
+			return ErrTotalLimitReached
+		}
+
 		nmGlobalID, err := nomenclature.GlobalID()
 		if err != nil {
 			continue
@@ -306,12 +333,9 @@ func (d *SearchEngine) processSafeCursorTask(
 
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return ErrContextCanceled
 		case nomenclatureChan <- nomenclature:
-			if totalProcessed.Add(1) >= int32(totalLimit) {
-				log.Printf("Total processed items have reached the limit (%d)", totalLimit)
-				return nil
-			}
+			totalProcessed.Add(1)
 		}
 	}
 
@@ -324,16 +348,12 @@ func (d *SearchEngine) retryGetNomenclatures(
 	cursor *request2.Cursor,
 	locale string,
 ) (*responses.NomenclatureResponse, error) {
-	const (
-		maxRetries    = 3
-		retryInterval = 2 * time.Second
-	)
-
 	var lastErr error
-	for retry := 0; retry < maxRetries; retry++ {
+
+	for retry := 0; retry < d.config.MaxRetries; retry++ {
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, ErrContextCanceled
 		default:
 		}
 
@@ -343,21 +363,17 @@ func (d *SearchEngine) retryGetNomenclatures(
 			return nomenclatureResponse, nil
 		}
 
-		if !strings.Contains(err.Error(), "wsarecv: An established connection was aborted") {
-			return nil, err
+		if errors.Is(err, ErrConnectionAborted) {
+			log.Printf("Retrying to get nomenclatures due to connection error. Attempt: %d", retry+1)
+			lastErr = err
+			time.Sleep(d.config.RetryInterval)
+			continue
 		}
 
-		lastErr = err
-		log.Printf("Retrying to get nomenclatures due to connection error. Attempt: %d", retry+1)
-
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(retryInterval):
-		}
+		return nil, fmt.Errorf("failed to get nomenclatures: %w", err)
 	}
 
-	return nil, fmt.Errorf("failed after %d retries: %w", maxRetries, lastErr)
+	return nil, fmt.Errorf("%w: %v", ErrFailedAfterRetries, lastErr)
 }
 
 func (d *SearchEngine) prepareGlobalIDs() (map[int]struct{}, error) {
@@ -382,7 +398,6 @@ func (d *SearchEngine) UploadToDb(settings request2.Settings, locale string) (in
 	log.SetPrefix("NM UPDATER | ")
 
 	updated := 0
-	responseLimiter := rate.NewLimiter(rate.Every(time.Minute/50), 50)
 	wg := sync.WaitGroup{}
 	var mu sync.Mutex
 	// Получаем существующие номенклатуры из БД
@@ -408,7 +423,7 @@ func (d *SearchEngine) UploadToDb(settings request2.Settings, locale string) (in
 
 	defer cancel()
 	go func() {
-		if err := d.GetNomenclaturesWithLimitConcurrentlyPutIntoChannel(ctx, settings, locale, nomenclatureChan, responseLimiter); err != nil {
+		if err := d.GetNomenclaturesWithLimitConcurrentlyPutIntoChannel(ctx, settings, locale, nomenclatureChan); err != nil {
 			log.Printf("Error fetching nomenclatures concurrently: %s", err)
 		}
 	}()
@@ -496,14 +511,13 @@ func (d *SearchEngine) CheckTotalNmCount(settings request2.Settings, locale stri
 	log.SetPrefix("TEST | ")
 
 	var count atomic.Int32
-	responseLimiter := rate.NewLimiter(rate.Every(time.Minute/50), 50)
 
 	nomenclatureChan := make(chan response.Nomenclature)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	defer cancel()
 	go func() {
-		if err := d.GetNomenclaturesWithLimitConcurrentlyPutIntoChannel(ctx, settings, locale, nomenclatureChan, responseLimiter); err != nil {
+		if err := d.GetNomenclaturesWithLimitConcurrentlyPutIntoChannel(ctx, settings, locale, nomenclatureChan); err != nil {
 			log.Printf("Error fetching nomenclatures concurrently: %s", err)
 		}
 	}()

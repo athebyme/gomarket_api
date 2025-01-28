@@ -44,7 +44,14 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	}
 	defer db.Close()
 
-	nomenclatureUpdGet := get2.NewSearchEngine(db, authEngine, s.writer)
+	searchConfig := get2.Config{
+		WorkerCount:    5,
+		MaxRetries:     get2.MaxRetries,
+		RetryInterval:  get2.RetryInterval,
+		RequestTimeout: get2.RequestTimeout,
+	}
+
+	nomenclatureUpdGet := get2.NewSearchEngine(db, authEngine, s.writer, searchConfig)
 	s.cardUpdateService = update2.NewCardUpdateService(
 		nomenclatureUpdGet,
 		service.NewTextService(),
@@ -154,7 +161,14 @@ func (s *WildberriesServer) uploadProducts(auth services.AuthEngine, categoryID 
 		s.log.FatalLog("Error connecting to PostgreSQL: %s\n", err)
 	}
 
-	engine := get2.NewSearchEngine(db, auth, s.writer)
+	searchConfig := get2.Config{
+		WorkerCount:    5,
+		MaxRetries:     get2.MaxRetries,
+		RetryInterval:  get2.RetryInterval,
+		RequestTimeout: get2.RequestTimeout,
+	}
+
+	engine := get2.NewSearchEngine(db, auth, s.writer, searchConfig)
 	repo := storage.NewNomenclatureRepository(db)
 
 	nmService := update2.NewNomenclatureService(*engine, *repo)

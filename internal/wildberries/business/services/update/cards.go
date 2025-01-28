@@ -263,8 +263,7 @@ func (cu *CardUpdateService) fetchNomenclatures(
 		ctx,
 		settings,
 		"",
-		nomenclatureCh,
-		responseLimiter,
+		nomenclatureCh
 	)
 	if err != nil {
 		log.Printf("Error fetching nomenclatures concurrently: %s", err)

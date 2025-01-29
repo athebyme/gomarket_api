@@ -2,6 +2,7 @@ package update
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"gomarketplace_api/config"
@@ -10,6 +11,7 @@ import (
 	"gomarketplace_api/internal/wildberries/business/services"
 	"gomarketplace_api/internal/wildberries/business/services/builder"
 	parse2 "gomarketplace_api/internal/wildberries/business/services/parse"
+	"gomarketplace_api/internal/wildberries/business/services/update/filter_utils"
 	clients2 "gomarketplace_api/internal/wildberries/pkg/clients"
 	"gomarketplace_api/pkg/business/service"
 	"gomarketplace_api/pkg/logger"
@@ -17,6 +19,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -42,32 +45,39 @@ func NewCardService(
 	wildberriesConfig config.WildberriesConfig) *CardService {
 	_log := logger.NewLogger(writer, "[CardService]")
 	cardBuilder := parse2.NewCardBuilderEngine(writer, wildberriesConfig.WbValues)
+	wsClient, err := clients2.NewWServiceClient(wsClientUrl, writer)
+	if err != nil {
+		return nil
+	}
 
 	return &CardService{
 		Logger:            _log,
 		cardBuilder:       cardBuilder,
 		WildberriesConfig: wildberriesConfig,
 		brandService:      parse2.NewBrandServiceWildberries(wildberriesConfig.WbBanned.BannedBrands),
-		wsclient:          clients2.NewWServiceClient(wsClientUrl, writer),
+		wsclient:          wsClient,
 		textService:       textService,
 		AuthEngine:        services.NewBearerAuth(wildberriesConfig.ApiKey),
 	}
 }
 
-func (s *CardService) Prepare(ids []int) (interface{}, error) {
+func (s *CardService) Prepare(ctx context.Context, ids []int) (interface{}, error) {
+	preparationsContext, cancel := context.WithTimeout(ctx, time.Minute*2)
+	defer cancel()
+
 	preparationLogger := s.Logger.WithPrefix("[Preparation stage] ")
 	startTime := time.Now()
 
 	var filtered sync.Map
 
-	globalIDsMap, err := s.filterGlobalIDs(ids)
+	globalIDsMap, err := s.filterGlobalIDs(preparationsContext, ids)
 	if err != nil {
 		return nil, err
 	}
 	s.logFilteredIDs(&filtered, ids, globalIDsMap, "Global ID filtering")
 	ids = s.extractKeys(globalIDsMap)
 
-	brandsMap, err := s.filterBrands(ids)
+	brandsMap, err := s.filterBrands(preparationsContext, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +85,7 @@ func (s *CardService) Prepare(ids []int) (interface{}, error) {
 
 	ids = s.extractKeys(brandsMap)
 
-	appellationsMap, err := s.filterAppellations(ids)
+	appellationsMap, err := s.filterAppellations(preparationsContext, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +93,7 @@ func (s *CardService) Prepare(ids []int) (interface{}, error) {
 
 	ids = s.extractKeys(appellationsMap)
 
-	descriptionsMap, err := s.filterDescriptions(ids)
+	descriptionsMap, err := s.filterDescriptions(preparationsContext, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +101,7 @@ func (s *CardService) Prepare(ids []int) (interface{}, error) {
 
 	ids = s.extractKeys(descriptionsMap)
 
-	barcodesMap, err := s.filterBarcodes(ids)
+	barcodesMap, err := s.filterBarcodes(preparationsContext, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -110,8 +120,12 @@ func (s *CardService) Prepare(ids []int) (interface{}, error) {
 	return ids, nil
 }
 
-func (s *CardService) PrepareAndUpload(ids []int) (interface{}, error) {
-	preparingResult, err := s.Prepare(ids)
+func (s *CardService) PrepareAndUpload(ctx context.Context, ids []int) (interface{}, error) {
+
+	preparationsContext, cancel := context.WithTimeout(ctx, time.Minute*3)
+	defer cancel()
+
+	preparingResult, err := s.Prepare(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -121,22 +135,22 @@ func (s *CardService) PrepareAndUpload(ids []int) (interface{}, error) {
 		return nil, fmt.Errorf("PrepareAndUpload returned invalid result")
 	}
 
-	appellations, err := s.filterAppellations(ids)
+	appellations, err := s.filterAppellations(preparationsContext, ids)
 	if err != nil {
 		return nil, err
 	}
 
-	descriptions, err := s.filterDescriptions(ids)
+	descriptions, err := s.filterDescriptions(preparationsContext, ids)
 	if err != nil {
 		return nil, err
 	}
 
-	brands, err := s.filterBrands(ids)
+	brands, err := s.filterBrands(preparationsContext, ids)
 	if err != nil {
 		return nil, err
 	}
 
-	prices, err := s.filterPrice(ids)
+	prices, err := s.filterPrice(preparationsContext, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -211,13 +225,16 @@ func (cu *CardService) sendToServer(url string, models interface{}) ([]byte, int
 	return bodyBytes, resp.StatusCode, nil
 }
 
-func (s *CardService) filterAppellations(ids []int) (map[int]interface{}, error) {
+func (s *CardService) filterAppellations(ctx context.Context, ids []int) (map[int]interface{}, error) {
+	filterContext, cancel := context.WithTimeout(ctx, time.Second*10)
+	defer cancel()
+
 	idSet := make(map[int]struct{})
 	for _, id := range ids {
 		idSet[id] = struct{}{}
 	}
 
-	appellations, err := s.wsclient.FetchAppellations(requests.AppellationsRequest{FilterRequest: requests.FilterRequest{
+	appellationsRaw, err := s.wsclient.FetcherChain.Fetch(filterContext, "appellations", requests.AppellationsRequest{FilterRequest: requests.FilterRequest{
 		ProductIDs: ids,
 	}})
 
@@ -225,8 +242,13 @@ func (s *CardService) filterAppellations(ids []int) (map[int]interface{}, error)
 		return nil, err
 	}
 
+	appellations, ok := appellationsRaw.(map[int]interface{})
+	if !ok {
+		return nil, fmt.Errorf("unexpected type from Fetch: %T", appellationsRaw)
+	}
+
 	if len(ids) == 0 {
-		return appellations, nil
+		return nil, fmt.Errorf("expected ids len greater than 0")
 	}
 
 	filtered := make(map[int]interface{}, len(ids))
@@ -244,15 +266,23 @@ func (s *CardService) filterAppellations(ids []int) (map[int]interface{}, error)
 	return filtered, nil
 }
 
-func (s *CardService) filterDescriptions(ids []int) (map[int]interface{}, error) {
+func (s *CardService) filterDescriptions(ctx context.Context, ids []int) (map[int]interface{}, error) {
+	filterContext, cancel := context.WithTimeout(ctx, time.Second*10)
+	defer cancel()
+
 	idSet := make(map[int]struct{})
 	for _, id := range ids {
 		idSet[id] = struct{}{}
 	}
 
-	descriptions, err := s.wsclient.FetchDescriptions(requests.DescriptionRequest{FilterRequest: requests.FilterRequest{ProductIDs: ids}, IncludeEmptyDescriptions: false})
+	descriptionsRaw, err := s.wsclient.FetcherChain.Fetch(filterContext, "descriptions", requests.DescriptionRequest{FilterRequest: requests.FilterRequest{ProductIDs: ids}, IncludeEmptyDescriptions: false})
 	if err != nil {
 		return nil, err
+	}
+
+	descriptions, ok := descriptionsRaw.(map[int]interface{})
+	if !ok {
+		return nil, fmt.Errorf("unexpected type from Fetch: %T", descriptionsRaw)
 	}
 
 	if len(ids) == 0 {
@@ -274,10 +304,18 @@ func (s *CardService) filterDescriptions(ids []int) (map[int]interface{}, error)
 	return filtered, nil
 }
 
-func (s *CardService) filterGlobalIDs(ids []int) (map[int]interface{}, error) {
-	globalIDs, err := s.wsclient.FetchGlobalIDs()
+func (s *CardService) filterGlobalIDs(ctx context.Context, ids []int) (map[int]interface{}, error) {
+	filterContext, cancel := context.WithTimeout(ctx, time.Second*10)
+	defer cancel()
+
+	idsRaw, err := s.wsclient.FetcherChain.Fetch(filterContext, "globalids", nil)
 	if err != nil {
 		return nil, err
+	}
+
+	globalIDs, ok := idsRaw.([]int)
+	if !ok {
+		return nil, fmt.Errorf("unexpected type from Fetch: %T", idsRaw)
 	}
 
 	globalIDsMap := make(map[int]interface{}, len(ids))
@@ -298,53 +336,68 @@ func (s *CardService) filterGlobalIDs(ids []int) (map[int]interface{}, error) {
 	return idSet, nil
 }
 
-func (s *CardService) filterBrands(ids []int) (map[int]interface{}, error) {
-	idSet := make(map[int]struct{})
-	for _, id := range ids {
-		idSet[id] = struct{}{}
-	}
+func (s *CardService) filterBrands(ctx context.Context, ids []int) (map[int]interface{}, error) {
+	filterContext, cancel := context.WithTimeout(ctx, time.Second*10)
+	defer cancel()
 
-	brands, err := s.wsclient.FetchBrands(requests.BrandRequest{FilterRequest: requests.FilterRequest{
-		ProductIDs: ids,
-	}})
-	if err != nil {
-		return nil, err
-	}
-
-	if len(ids) == 0 {
-		return brands, nil
-	}
-
-	filtered := make(map[int]interface{}, len(ids))
-	for id, brand := range brands {
-		if _, exists := idSet[id]; exists {
-			switch brand.(type) {
-			case string:
-				strBrand := brand.(string)
-				if s.brandService.IsBanned(strBrand) || strBrand == "" {
-					continue
-				}
-				filtered[id] = brand.(string)
-			default:
-				return nil, fmt.Errorf("unsupported type of brand ")
+	return filter_utils.FilterData(
+		ids,
+		func(ids []int) (map[int]interface{}, error) {
+			result, err := s.wsclient.FetcherChain.Fetch(filterContext, "brands", requests.BrandRequest{
+				FilterRequest: requests.FilterRequest{ProductIDs: ids},
+			})
+			if err != nil {
+				return nil, err
 			}
-		}
-	}
 
-	return filtered, nil
+			fetchedMap, ok := result.(map[string]interface{})
+			if !ok {
+				return nil, fmt.Errorf("unexpected type from Fetch: %T", result)
+			}
+
+			brandMap := make(map[int]interface{})
+			for key, value := range fetchedMap {
+				id, err := strconv.Atoi(key)
+				if err != nil {
+					return nil, fmt.Errorf("invalid product ID: %v", key)
+				}
+				brandMap[id] = value
+			}
+
+			return brandMap, nil
+		},
+		func(id int, brand interface{}) (interface{}, bool, error) {
+			strBrand, ok := brand.(string)
+			if !ok {
+				return "", false, fmt.Errorf("unsupported type of brand: %T", brand)
+			}
+			if s.brandService.IsBanned(strBrand) || strBrand == "" {
+				return "", false, nil
+			}
+			return strBrand, true, nil
+		},
+	)
 }
 
-func (s *CardService) filterPrice(ids []int) (map[int]interface{}, error) {
+func (s *CardService) filterPrice(ctx context.Context, ids []int) (map[int]interface{}, error) {
+	filterContext, cancel := context.WithTimeout(ctx, time.Second*10)
+	defer cancel()
+
 	idSet := make(map[int]struct{})
 	for _, id := range ids {
 		idSet[id] = struct{}{}
 	}
 
-	prices, err := s.wsclient.FetchPrices(requests.PriceRequest{FilterRequest: requests.FilterRequest{
+	pricesRaw, err := s.wsclient.FetcherChain.Fetch(filterContext, "prices", requests.PriceRequest{FilterRequest: requests.FilterRequest{
 		ProductIDs: ids,
 	}})
 	if err != nil {
 		return nil, err
+	}
+
+	prices, ok := pricesRaw.(map[int]interface{})
+	if !ok {
+		return nil, fmt.Errorf("unexpected type from Fetch: %T", pricesRaw)
 	}
 
 	if len(ids) == 0 {
@@ -373,14 +426,22 @@ func (s *CardService) filterPrice(ids []int) (map[int]interface{}, error) {
 	return filtered, nil
 }
 
-func (s *CardService) filterBarcodes(ids []int) (map[int]interface{}, error) {
-	barcodesRepo, err := s.wsclient.FetchBarcodes(requests.BarcodeRequest{FilterRequest: requests.FilterRequest{ProductIDs: ids}})
+func (s *CardService) filterBarcodes(ctx context.Context, ids []int) (map[int]interface{}, error) {
+	filterContext, cancel := context.WithTimeout(ctx, time.Second*10)
+	defer cancel()
+
+	barcodesRaw, err := s.wsclient.FetcherChain.Fetch(filterContext, "barcodes", requests.BarcodeRequest{FilterRequest: requests.FilterRequest{ProductIDs: ids}})
 	if err != nil {
 		return nil, err
 	}
 
+	barcodesMap, ok := barcodesRaw.(map[int]interface{})
+	if !ok {
+		return nil, fmt.Errorf("unexpected type from Fetch: %T", barcodesRaw)
+	}
+
 	barcodes := make(map[int]interface{}, len(ids))
-	for id, barcode := range barcodesRepo {
+	for id, barcode := range barcodesMap {
 		barcodes[id] = barcode
 	}
 
@@ -410,12 +471,20 @@ func (s *CardService) filterBarcodes(ids []int) (map[int]interface{}, error) {
 	return idSet, nil
 }
 
-func (s *CardService) filterSizes(ids []int) (map[int]interface{}, error) {
-	sizes, err := s.wsclient.FetchSizes(requests.SizeRequest{FilterRequest: requests.FilterRequest{
+func (s *CardService) filterSizes(ctx context.Context, ids []int) (map[int]interface{}, error) {
+	filterContext, cancel := context.WithTimeout(ctx, time.Second*10)
+	defer cancel()
+
+	sizesRaw, err := s.wsclient.FetcherChain.Fetch(filterContext, "sizes", requests.SizeRequest{FilterRequest: requests.FilterRequest{
 		ProductIDs: ids,
 	}})
 	if err != nil {
 		return nil, err
+	}
+
+	sizes, ok := sizesRaw.(map[int]interface{})
+	if !ok {
+		return nil, fmt.Errorf("unexpected type from Fetch: %T", sizesRaw)
 	}
 
 	sizesMap := make(map[int]interface{}, len(ids))

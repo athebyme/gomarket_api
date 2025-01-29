@@ -1,46 +1,28 @@
 package clients
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"gomarketplace_api/pkg/logger"
 	"io"
-	"io/ioutil"
 	"net/http"
 )
 
 type GlobalIDsClient struct {
-	ApiURL string
-	log    logger.Logger
+	BaseClient
 }
 
 func NewGlobalIDsClient(apiURL string, writer io.Writer) *GlobalIDsClient {
-	_log := logger.NewLogger(writer, "[WS GlobalIDsClient]")
-
-	return &GlobalIDsClient{ApiURL: apiURL, log: _log}
+	return &GlobalIDsClient{
+		BaseClient: *NewBaseClient(apiURL, writer, "[GlobalIDsClient]"),
+	}
 }
 
-func (c *GlobalIDsClient) FetchGlobalIDs() ([]int, error) {
-	c.log.Log("Got signal for FetchGlobalIDs()")
-	resp, err := http.Get(fmt.Sprintf("%s/api/globalids", c.ApiURL))
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch Global IDs, status code: %d", resp.StatusCode)
-	}
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
+func (f *GlobalIDsClient) Fetch(ctx context.Context, request interface{}) (interface{}, error) {
 	var globalIDs []int
-	if err := json.Unmarshal(body, &globalIDs); err != nil {
+	err := f.doRequest(ctx, http.MethodGet, "/api/globalids", request, &globalIDs)
+	if err != nil {
 		return nil, err
 	}
-
+	f.log.Log(fmt.Sprintf("Fetched %d Global IDs", len(globalIDs)))
 	return globalIDs, nil
 }

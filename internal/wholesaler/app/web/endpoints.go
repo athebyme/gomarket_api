@@ -77,7 +77,8 @@ func SetupRoutes(handlers ...handlers2.Handler) {
 		log.Fatalf("BarcodeHandler not provided")
 	}
 
-	handlerWithCORS := enableCORS(mux)
+	handlerWithLogging := loggingMiddleware(mux)
+	handlerWithCORS := enableCORS(handlerWithLogging)
 
 	log.Printf("Запущен сервис wholesaler /api/")
 	log.Fatal(http.ListenAndServe(":8081", handlerWithCORS))
@@ -92,6 +93,13 @@ func enableCORS(next http.Handler) http.Handler {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("Request received: %s %s", r.Method, r.URL.Path)
 		next.ServeHTTP(w, r)
 	})
 }

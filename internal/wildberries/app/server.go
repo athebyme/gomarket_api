@@ -17,6 +17,7 @@ import (
 	"gomarketplace_api/pkg/logger"
 	"io"
 	"log"
+	"time"
 )
 
 type WildberriesServer struct {
@@ -153,7 +154,7 @@ func (s *WildberriesServer) updateNames() interface{} {
 	return updateMedia
 }
 
-func (s *WildberriesServer) uploadProducts(auth services.AuthEngine, categoryID int) interface{} {
+func (s *WildberriesServer) uploadProducts(ctx context.Context, auth services.AuthEngine, categoryID int) interface{} {
 	wsUrl := "http://localhost:8081"
 	textService := service.NewTextService()
 	db, err := s.Database.Connect()
@@ -182,7 +183,10 @@ func (s *WildberriesServer) uploadProducts(auth services.AuthEngine, categoryID 
 		ids = append(ids, k)
 	}
 
-	resultIDs, err := cardService.PrepareAndUpload(ids)
+	uploadContext, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+
+	resultIDs, err := cardService.PrepareAndUpload(uploadContext, ids)
 	if err != nil {
 		return nil
 	}
@@ -236,17 +240,12 @@ func (s *WildberriesServer) updateByCategoryId() error {
 		Filter: request2.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{5067}, Brands: []string{}, ImtID: 0},
 		Cursor: request2.Cursor{Limit: 1500},
 	})
-	updateMedia, err := s.cardUpdateService.UpdateCardMedia(request2.Settings{
-		Sort:   request2.Sort{Ascending: false},
-		Filter: request2.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{5067}, Brands: []string{}, ImtID: 0},
-		Cursor: request2.Cursor{Limit: 1500},
-	})
 	if err != nil {
 		s.log.FatalLog("Error updating nomenclatures: %s\n", err)
 	}
 	s.log.Log(
 		"Updated appellations for %d nomenclatures\n"+
 			"Updated media for %d nomenclatures\n"+
-			"Updated packages for %d nomenclatures", updateAppellation, updateMedia, updatePackages)
+			"Updated packages for %d nomenclatures", updateAppellation, updatePackages)
 	return nil
 }

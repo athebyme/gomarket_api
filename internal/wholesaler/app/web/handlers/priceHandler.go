@@ -40,7 +40,7 @@ func NewPriceHandler(connector dbconnect.Database) *PriceHandler {
 	priceRepo := repositories.NewPriceRepository(db, priceUpdater)
 	err = priceRepo.Update([]string{"global_id", "price"})
 	if err != nil {
-		return nil
+		log.Println("Error updating price")
 	}
 
 	priceService := business.NewPriceEngine(priceRepo)

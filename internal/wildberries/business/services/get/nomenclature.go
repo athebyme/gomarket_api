@@ -164,14 +164,13 @@ func (d *SearchEngine) GetNomenclaturesWithLimitConcurrentlyPutIntoChannel(
 		totalProcessed atomic.Int32
 	)
 
-	// Запускаем воркеров
 	for i := 0; i < d.config.WorkerCount; i++ {
 		wg.Add(1)
 		go d.safeWorker(
 			ctx,
 			i,
 			&wg,
-			taskChan, // Канал для чтения
+			taskChan,
 			nomenclatureChan,
 			errChan,
 			settings,
@@ -183,17 +182,14 @@ func (d *SearchEngine) GetNomenclaturesWithLimitConcurrentlyPutIntoChannel(
 		)
 	}
 
-	// Запускаем начальную задачу
 	taskChan <- request2.Cursor{NmID: 0, UpdatedAt: "", Limit: 100}
 
-	// Отдельная goroutine для завершения работы
 	go func() {
 		wg.Wait()
 		close(nomenclatureChan)
 		close(errChan)
 	}()
 
-	// Обработка результатов
 	for err := range errChan {
 		if err == nil {
 			continue
@@ -212,7 +208,7 @@ func (d *SearchEngine) safeWorker(
 	ctx context.Context,
 	workerID int,
 	wg *sync.WaitGroup,
-	taskChan <-chan request2.Cursor, // Только для чтения
+	taskChan <-chan request2.Cursor,
 	nomenclatureChan chan<- response.Nomenclature,
 	errChan chan<- error,
 	settings request2.Settings,
@@ -227,7 +223,6 @@ func (d *SearchEngine) safeWorker(
 		wg.Done()
 	}()
 
-	// Создаем канал для записи
 	writeTaskChan := make(chan request2.Cursor, WorkerCount)
 	defer close(writeTaskChan)
 
@@ -255,7 +250,7 @@ func (d *SearchEngine) safeWorker(
 				locale,
 				totalLimit,
 				totalProcessed,
-				writeTaskChan, // Передаем канал для записи
+				writeTaskChan,
 				globalIDsMap,
 			)
 
@@ -267,6 +262,7 @@ func (d *SearchEngine) safeWorker(
 				if err != nil && !errors.Is(err, ErrNoMoreData) && !errors.Is(err, ErrTotalLimitReached) {
 					return
 				}
+				continue
 			}
 		}
 	}
@@ -281,7 +277,7 @@ func (d *SearchEngine) processSafeCursorTask(
 	locale string,
 	totalLimit int,
 	totalProcessed *atomic.Int32,
-	taskChan chan<- request2.Cursor, // Изменено на chan<-
+	taskChan chan<- request2.Cursor,
 	globalIDsMap map[int]struct{},
 ) error {
 	if err := d.limiter.Wait(ctx); err != nil {
@@ -308,7 +304,7 @@ func (d *SearchEngine) processSafeCursorTask(
 
 	if totalProcessed.Load() < int32(totalLimit) {
 		select {
-		case taskChan <- request2.Cursor{ // Теперь это допустимо
+		case taskChan <- request2.Cursor{
 			NmID:      lastNomenclature.NmID,
 			UpdatedAt: lastNomenclature.UpdatedAt,
 			Limit:     cursor.Limit,
@@ -378,9 +374,18 @@ func (d *SearchEngine) retryGetNomenclatures(
 
 func (d *SearchEngine) prepareGlobalIDs() (map[int]struct{}, error) {
 	client := clients.NewGlobalIDsClient("http://localhost:8081", d.writer)
-	globalIDs, err := client.FetchGlobalIDs()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	result, err := client.Fetch(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching Global IDs: %w", err)
+	}
+
+	globalIDs, ok := result.([]int)
+	if !ok {
+		return nil, fmt.Errorf("unexpected type for global IDs: expected []int, got %T", result)
 	}
 
 	globalIDsMap := make(map[int]struct{}, len(globalIDs))
@@ -407,18 +412,26 @@ func (d *SearchEngine) UploadToDb(settings request2.Settings, locale string) (in
 	}
 	client := clients.NewGlobalIDsClient("http://localhost:8081", d.writer)
 
-	// Инициализируем мапу globalIDsFromDBMap
-	globalIDsFromDB, err := client.FetchGlobalIDs()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	result, err := client.Fetch(ctx, nil)
 	if err != nil {
-		log.Fatalf("Error fetching Global IDs: %s", err)
+		return -1, fmt.Errorf("error fetching Global IDs: %w", err)
 	}
-	globalIDsFromDBMap := make(map[int]struct{}, len(globalIDsFromDB))
-	for _, globalID := range globalIDsFromDB {
+
+	globalIDs, ok := result.([]int)
+	if !ok {
+		return -1, fmt.Errorf("unexpected type for global IDs: expected []int, got %T", result)
+	}
+
+	globalIDsFromDBMap := make(map[int]struct{}, len(globalIDs))
+	for _, globalID := range globalIDs {
 		globalIDsFromDBMap[globalID] = struct{}{}
 	}
 
 	nomenclatureChan := make(chan response.Nomenclature)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel = context.WithCancel(context.Background())
 	log.Println("Fetching and sending nomenclatures to the channel...")
 
 	defer cancel()
@@ -431,7 +444,7 @@ func (d *SearchEngine) UploadToDb(settings request2.Settings, locale string) (in
 	var uploadPacket []interface{}
 	loadingChan := make(chan []interface{})
 	saw := 0
-	errors := make(map[int]string)
+	errs := make(map[int]string)
 
 	wg.Add(1)
 	go func() {
@@ -446,13 +459,13 @@ func (d *SearchEngine) UploadToDb(settings request2.Settings, locale string) (in
 			id, err := nomenclature.GlobalID()
 			if err != nil {
 				mu.Lock()
-				errors[id] = fmt.Sprintf("ID: %d -- Nomenclature upload failed: %s", nomenclature.VendorCode, err)
+				errs[id] = fmt.Sprintf("ID: %d -- Nomenclature upload failed: %s", nomenclature.VendorCode, err)
 				mu.Unlock()
 				continue
 			}
 			if _, ok := globalIDsFromDBMap[id]; !ok {
 				mu.Lock()
-				errors[id] = fmt.Sprintf("ID: %d -- GlobalIDMap not contains this id: %s", nomenclature.VendorCode, err)
+				errs[id] = fmt.Sprintf("ID: %d -- GlobalIDMap not contains this id: %s", nomenclature.VendorCode, err)
 				mu.Unlock()
 				continue
 			}
@@ -498,7 +511,7 @@ func (d *SearchEngine) UploadToDb(settings request2.Settings, locale string) (in
 
 	log.Printf("It looks like all the data is up to date\nSaw: %d", saw)
 
-	for k, v := range errors {
+	for k, v := range errs {
 		log.Printf("Error uploading nomenclature: %s. Details: %v", k, v)
 	}
 
@@ -508,7 +521,7 @@ func (d *SearchEngine) UploadToDb(settings request2.Settings, locale string) (in
 
 func (d *SearchEngine) CheckTotalNmCount(settings request2.Settings, locale string) (int, error) {
 	log.Printf("You are testing search engine")
-	log.SetPrefix("TEST | ")
+	log.SetPrefix("[ TEST ] ")
 
 	var count atomic.Int32
 

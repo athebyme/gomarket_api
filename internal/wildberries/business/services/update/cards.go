@@ -94,9 +94,15 @@ func (bp *batchProcessor) flush() {
 }
 
 func NewCardUpdateService(nservice *get.SearchEngine, textService service.ITextService, wsClientUrl string, auth services.AuthEngine, writer io.Writer, brandService parse.BrandService, wbDefaultValues values.WildberriesValues) *CardUpdateService {
+
+	client, err := clients2.NewWServiceClient(wsClientUrl, writer)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	return &CardUpdateService{
 		nomenclatureService: *nservice,
-		wsclient:            clients2.NewWServiceClient(wsClientUrl, writer),
+		wsclient:            client,
 		textService:         textService,
 		brandService:        brandService,
 		AuthEngine:          auth,
@@ -233,19 +239,29 @@ func (cu *CardUpdateService) validateAndPrepareProcessor(
 
 func (cu *CardUpdateService) fetchRequiredData(ctx context.Context) (map[int]interface{}, map[int]interface{}, error) {
 	log.Println("Fetching filterAppellations...")
-	appellationsMap, err := cu.wsclient.FetchAppellations(requests.AppellationsRequest{
+	appellationsResult, err := cu.wsclient.FetcherChain.Fetch(ctx, "appellations", requests.AppellationsRequest{
 		FilterRequest: requests.FilterRequest{ProductIDs: []int{}},
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("error fetching filterAppellations: %w", err)
 	}
 
+	appellationsMap, ok := appellationsResult.(map[int]interface{})
+	if !ok {
+		return nil, nil, fmt.Errorf("error fetching filterAppellations: %w", err)
+	}
+
 	log.Println("Fetching descriptions...")
-	descriptionsMap, err := cu.wsclient.FetchDescriptions(requests.AppellationsRequest{
+	descriptionsResult, err := cu.wsclient.FetcherChain.Fetch(ctx, "descriptions", requests.AppellationsRequest{
 		FilterRequest: requests.FilterRequest{ProductIDs: []int{}},
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("error fetching descriptions: %w", err)
+	}
+
+	descriptionsMap, ok := descriptionsResult.(map[int]interface{})
+	if !ok {
+		return nil, nil, fmt.Errorf("error fetching filterDescriptions: %w", err)
 	}
 
 	return appellationsMap, descriptionsMap, nil
@@ -263,8 +279,7 @@ func (cu *CardUpdateService) fetchNomenclatures(
 		ctx,
 		settings,
 		"",
-		nomenclatureCh
-	)
+		nomenclatureCh)
 	if err != nil {
 		log.Printf("Error fetching nomenclatures concurrently: %s", err)
 		return
@@ -314,7 +329,6 @@ func (cu *CardUpdateService) UpdateCardPackages(settings request2.Settings) (int
 	const UPLOAD_SIZE = 2000
 	const MaxBatchSize = 1 << 20 // 1 MB
 	const GOROUTINE_COUNT = 5
-	const REQUEST_RATE_LIMIT = 70 // 100 запросов в минуту = max
 	const UPLOAD_RATE_LIMIT = 10
 	var currentBatch []request2.Model
 	var currentBatchSize int
@@ -328,14 +342,13 @@ func (cu *CardUpdateService) UpdateCardPackages(settings request2.Settings) (int
 	nomenclatureChan := make(chan response2.Nomenclature)
 	uploadChan := make(chan []request2.Model) // Канал для отправки данных
 
-	responseLimiter := rate.NewLimiter(rate.Every(time.Minute/REQUEST_RATE_LIMIT), REQUEST_RATE_LIMIT)
 	uploadToServerLimiter := rate.NewLimiter(rate.Every(time.Minute/UPLOAD_RATE_LIMIT), UPLOAD_RATE_LIMIT)
 
 	log.Println("Fetching and sending nomenclatures to the channel...")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
-		if err := cu.nomenclatureService.GetNomenclaturesWithLimitConcurrentlyPutIntoChannel(ctx, settings, "", nomenclatureChan, responseLimiter); err != nil {
+		if err := cu.nomenclatureService.GetNomenclaturesWithLimitConcurrentlyPutIntoChannel(ctx, settings, "", nomenclatureChan); err != nil {
 			log.Printf("Error fetching nomenclatures concurrently: %s", err)
 		}
 	}()
@@ -424,7 +437,7 @@ func (cu *CardUpdateService) UpdateCardPackages(settings request2.Settings) (int
 
 const updateCardsMediaUrl = "https://content-api.wildberries.ru/content/v3/media/save"
 
-func (cu *CardUpdateService) UpdateCardMedia(settings request2.Settings) (int, error) {
+func (cu *CardUpdateService) UpdateCardMedia(ctx context.Context, settings request2.Settings) (int, error) {
 	const GOROUTINE_COUNT = 5
 	const REQUEST_RATE_LIMIT = 60 // 100 запросов в минуту = max
 	const UPLOAD_RATE_LIMIT = 60
@@ -442,21 +455,31 @@ func (cu *CardUpdateService) UpdateCardMedia(settings request2.Settings) (int, e
 	mediaRequest := clients.ImageRequest{
 		Censored: false,
 	}
-	mediaMap, err := cu.wsclient.FetchImages(mediaRequest)
+
+	mediaMapContext, cancel := context.WithTimeout(ctx, time.Second*15)
+
+	defer cancel()
+
+	mediaMapRaw, err := cu.wsclient.FetcherChain.Fetch(mediaMapContext, "media", mediaRequest)
 	if err != nil {
 		return 0, fmt.Errorf("error fetching media urls: %w", err)
 	}
 
+	mediaMap, ok := mediaMapRaw.(map[int][]string)
+	if !ok {
+		return 0, fmt.Errorf("unexpected type for mediaMap: expected map[int][]string, got %T", mediaMapRaw)
+	}
+
 	nomenclatureChan := make(chan response2.Nomenclature)
-	uploadChan := make(chan request2.Model) // Канал для отправки данных
+	uploadChan := make(chan request2.Model)
 
 	responseLimiter := rate.NewLimiter(rate.Every(time.Minute/REQUEST_RATE_LIMIT), REQUEST_RATE_LIMIT)
 	uploadToServerLimiter := rate.NewLimiter(rate.Every(time.Minute/UPLOAD_RATE_LIMIT), UPLOAD_RATE_LIMIT)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel = context.WithCancel(context.Background())
 	defer cancel()
 	log.Println("Fetching and sending nomenclatures to the channel...")
 	go func() {
-		if err := cu.nomenclatureService.GetNomenclaturesWithLimitConcurrentlyPutIntoChannel(ctx, settings, "", nomenclatureChan, responseLimiter); err != nil {
+		if err := cu.nomenclatureService.GetNomenclaturesWithLimitConcurrentlyPutIntoChannel(ctx, settings, "", nomenclatureChan); err != nil {
 			log.Printf("Error fetching nomenclatures concurrently: %s", err)
 		}
 	}()
@@ -549,7 +572,7 @@ func (cu *CardUpdateService) UpdateCardMedia(settings request2.Settings) (int, e
 	return updatedCount, nil
 }
 
-func (cu *CardUpdateService) UpdateCardBrand(settings request2.Settings) (int, error) {
+func (cu *CardUpdateService) UpdateCardBrand(ctx context.Context, settings request2.Settings) (int, error) {
 	const UPLOAD_SIZE = 2000
 	const MaxBatchSize = 1 << 20 // 1 MB
 	const GOROUTINE_COUNT = 5
@@ -560,9 +583,15 @@ func (cu *CardUpdateService) UpdateCardBrand(settings request2.Settings) (int, e
 	var gotData []response2.Nomenclature
 	var goroutinesNmsCount atomic.Int32
 
-	log.Println("Fetching Brands list...")
-	brandsMap, err := cu.wsclient.FetchBrands(requests.BrandRequest{FilterRequest: requests.FilterRequest{ProductIDs: []int{}}})
+	brandsContext, cancel := context.WithTimeout(ctx, time.Second*15)
+	defer cancel()
+	brandsRaw, err := cu.wsclient.FetcherChain.Fetch(brandsContext, "brands", requests.BrandRequest{FilterRequest: requests.FilterRequest{ProductIDs: []int{}}})
 	if err != nil {
+		return 0, fmt.Errorf("error fetching descriptions: %w", err)
+	}
+
+	brandsMap, ok := brandsRaw.(map[int]interface{})
+	if !ok {
 		return 0, fmt.Errorf("error fetching descriptions: %w", err)
 	}
 
@@ -573,14 +602,12 @@ func (cu *CardUpdateService) UpdateCardBrand(settings request2.Settings) (int, e
 	nomenclatureChan := make(chan response2.Nomenclature)
 	uploadChan := make(chan []request2.Model) // Канал для отправки данных
 
-	responseLimiter := rate.NewLimiter(rate.Every(time.Minute/REQUEST_RATE_LIMIT), REQUEST_RATE_LIMIT)
 	uploadToServerLimiter := rate.NewLimiter(rate.Every(time.Minute/UPLOAD_RATE_LIMIT), UPLOAD_RATE_LIMIT)
 
-	log.Println("Fetching and sending nomenclatures to the channel...")
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel = context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
-		if err := cu.nomenclatureService.GetNomenclaturesWithLimitConcurrentlyPutIntoChannel(ctx, settings, "", nomenclatureChan, responseLimiter); err != nil {
+		if err := cu.nomenclatureService.GetNomenclaturesWithLimitConcurrentlyPutIntoChannel(ctx, settings, "", nomenclatureChan); err != nil {
 			log.Printf("Error fetching nomenclatures concurrently: %s", err)
 		}
 	}()

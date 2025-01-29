@@ -213,9 +213,13 @@ func (r *ProductRepository) GetMediaSourceByProductID(productID int, censored bo
 			mediaUrls[i] = fmt.Sprintf(format, imageSize, productID, sourceKey, imageSize)
 		}
 	} else {
-		format = "http://media.athebyme-market.ru/%d/%d.jpg"
-		for i, _ := range sourceKeys {
-			mediaUrls[i] = fmt.Sprintf(format, productID, i)
+		//format = "http://media.athebyme-market.ru/%d/%d.jpg"
+		//for i, _ := range sourceKeys {
+		//	mediaUrls[i] = fmt.Sprintf(format, productID, i)
+		//}
+		format = "https://x-story.ru/mp/_project/img_sx_%d/%d_%s_%d.jpg"
+		for i, sourceKey := range sourceKeys {
+			mediaUrls[i] = fmt.Sprintf(format, imageSize, productID, sourceKey, imageSize)
 		}
 	}
 

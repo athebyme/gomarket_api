@@ -13,9 +13,10 @@ type MarketplaceConfig interface {
 }
 
 type WildberriesConfig struct {
-	ApiKey   string                         `yaml:"api_key"`
-	WbValues values.WildberriesValues       `yaml:"default_values"`
-	WbBanned values.WildberriesBannedBrands `yaml:"brands"`
+	ApiKey     string                         `yaml:"api_key"`
+	WbValues   values.WildberriesValues       `yaml:"default_values"`
+	WbBanned   values.WildberriesBannedBrands `yaml:"brands"`
+	WbIdentity values.Identity                `yaml:"identity"`
 }
 
 type AppConfig struct {

@@ -11,4 +11,6 @@
 
 
 # игнорируем апи конфиг
-config/
+config/config.yaml
+
+*.env

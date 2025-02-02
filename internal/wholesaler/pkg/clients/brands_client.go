@@ -1,48 +1,23 @@
 package clients
 
 import (
-	"encoding/json"
-	"fmt"
-	"gomarketplace_api/pkg/logger"
+	"context"
 	"io"
-	"io/ioutil"
 	"net/http"
 )
 
 type BrandsClient struct {
-	ApiURL string
-	logger logger.Logger
+	BaseClient
 }
 
 func NewBrandsClient(apiURL string, writer io.Writer) *BrandsClient {
-	_log := logger.NewLogger(writer, "[WS BrandClient]")
 	return &BrandsClient{
-		ApiURL: apiURL,
-		logger: _log,
+		BaseClient: *NewBaseClient(apiURL, writer, "[WS BrandClient]"),
 	}
 }
 
-func (c BrandsClient) FetchBrands() (map[int]interface{}, error) {
-	c.logger.Log("Got signal for FetchBrands()")
-	resp, err := http.Get(fmt.Sprintf("%s/api/brands", c.ApiURL))
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch Brands, status code: %d", resp.StatusCode)
-	}
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var appellations map[int]interface{}
-	if err := json.Unmarshal(body, &appellations); err != nil {
-		return nil, err
-	}
-
-	return appellations, nil
+func (c *BrandsClient) Fetch(ctx context.Context, requestBody interface{}) (interface{}, error) {
+	var brands map[int]interface{}
+	err := c.doRequest(ctx, http.MethodPost, "/api/brands", requestBody, &brands)
+	return brands, err
 }

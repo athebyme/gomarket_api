@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/lib/pq"
 	"gomarketplace_api/internal/wholesaler/internal/models"
 	"gomarketplace_api/internal/wholesaler/internal/storage"
 	"log"
@@ -69,7 +70,7 @@ func (r *ProductRepository) GetGlobalIDs() ([]int, error) {
 	return globalIDs, nil
 }
 
-func (r *ProductRepository) GetAppellations() (map[int]string, error) {
+func (r *ProductRepository) GetAppellations() (map[int]interface{}, error) {
 	query := `SELECT global_id, appellation FROM wholesaler.products`
 
 	rows, err := r.db.Query(query)
@@ -78,7 +79,7 @@ func (r *ProductRepository) GetAppellations() (map[int]string, error) {
 	}
 	defer rows.Close()
 
-	appellations := make(map[int]string)
+	appellations := make(map[int]interface{})
 	for rows.Next() {
 		var globalId int
 		var appellation string
@@ -95,16 +96,83 @@ func (r *ProductRepository) GetAppellations() (map[int]string, error) {
 	return appellations, nil
 }
 
-func (r *ProductRepository) GetDescriptions() (map[int]string, error) {
-	query := `SELECT global_id, product_description FROM wholesaler.descriptions`
+func (r *ProductRepository) GetAppellationsByIDs(ids []int) (map[int]interface{}, error) {
+	query := `SELECT global_id, appellation FROM wholesaler.products WHERE global_id = ANY($1)`
 
-	rows, err := r.db.Query(query)
+	rows, err := r.db.Query(query, pq.Array(ids))
 	if err != nil {
 		return nil, fmt.Errorf("ошибка выполнения запроса для получения globalIDs: %w", err)
 	}
 	defer rows.Close()
 
-	descriptions := make(map[int]string)
+	appellations := make(map[int]interface{})
+	for rows.Next() {
+		var globalId int
+		var appellation string
+		if err := rows.Scan(&globalId, &appellation); err != nil {
+			return nil, fmt.Errorf("ошибка сканирования globalID: %w", err)
+		}
+		appellations[globalId] = appellation
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ошибка при итерации по строкам: %w", err)
+	}
+
+	return appellations, nil
+}
+
+func (r *ProductRepository) GetDescriptions(includeEmpty bool) (map[int]interface{}, error) {
+	// Строим запрос на основе флага includeEmpty
+	query := `
+		SELECT 
+			global_id, 
+			product_description 
+		FROM 
+			wholesaler.descriptions
+	`
+	if !includeEmpty {
+		query += ` WHERE product_description IS NOT NULL AND product_description != ''`
+	}
+
+	// Выполняем запрос
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка выполнения запроса для получения описаний: %w", err)
+	}
+	defer rows.Close()
+
+	// Создаём map для результатов
+	descriptions := make(map[int]interface{})
+	for rows.Next() {
+		var globalId int
+		var description string
+		if err := rows.Scan(&globalId, &description); err != nil {
+			return nil, fmt.Errorf("ошибка сканирования строки: %w", err)
+		}
+		descriptions[globalId] = description
+	}
+
+	// Проверяем ошибки при итерации по строкам
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ошибка при итерации по строкам: %w", err)
+	}
+
+	return descriptions, nil
+}
+
+func (r *ProductRepository) GetDescriptionsByIDs(ids []int, includeEmpty bool) (map[int]interface{}, error) {
+	query := `SELECT global_id, product_description FROM wholesaler.descriptions WHERE global_id = ANY($1)`
+	if !includeEmpty {
+		query += ` AND product_description IS NOT NULL AND product_description != ''`
+	}
+	rows, err := r.db.Query(query, pq.Array(ids))
+	if err != nil {
+		return nil, fmt.Errorf("ошибка выполнения запроса для получения globalIDs: %w", err)
+	}
+	defer rows.Close()
+
+	descriptions := make(map[int]interface{})
 	for rows.Next() {
 		var globalId int
 		var description string
@@ -141,13 +209,20 @@ func (r *ProductRepository) GetMediaSourceByProductID(productID int, censored bo
 
 	if censored {
 		format = "https://x-story.ru/mp/_project/img_sx0_%d/%d_%s_%d.jpg"
+		for i, sourceKey := range sourceKeys {
+			mediaUrls[i] = fmt.Sprintf(format, imageSize, productID, sourceKey, imageSize)
+		}
 	} else {
+		//format = "http://media.athebyme-market.ru/%d/%d.jpg"
+		//for i, _ := range sourceKeys {
+		//	mediaUrls[i] = fmt.Sprintf(format, productID, i)
+		//}
 		format = "https://x-story.ru/mp/_project/img_sx_%d/%d_%s_%d.jpg"
+		for i, sourceKey := range sourceKeys {
+			mediaUrls[i] = fmt.Sprintf(format, imageSize, productID, sourceKey, imageSize)
+		}
 	}
 
-	for i, sourceKey := range sourceKeys {
-		mediaUrls[i] = fmt.Sprintf(format, imageSize, productID, sourceKey, imageSize)
-	}
 	return mediaUrls, nil
 }
 

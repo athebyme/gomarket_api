@@ -12,3 +12,7 @@ type WildberriesValues struct {
 type WildberriesBannedBrands struct {
 	BannedBrands []string `yaml:"banned"`
 }
+
+type Identity struct {
+	Code int `yaml:"code"`
+}

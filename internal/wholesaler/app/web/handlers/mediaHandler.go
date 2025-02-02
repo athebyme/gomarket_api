@@ -2,9 +2,9 @@ package handlers
 
 import (
 	"encoding/json"
-	"gomarketplace_api/internal/wholesaler/internal/models/requests"
 	"gomarketplace_api/internal/wholesaler/internal/storage"
 	"gomarketplace_api/internal/wholesaler/internal/storage/repositories"
+	"gomarketplace_api/internal/wholesaler/pkg/requests"
 	"gomarketplace_api/pkg/dbconnect"
 	"log"
 	"net/http"
@@ -49,7 +49,7 @@ func NewMediaHandler(connector dbconnect.Database) *MediaHandler {
 }
 
 func (h *MediaHandler) GetMediaHandler(w http.ResponseWriter, r *http.Request) {
-
+	log.Println("Media POST signal")
 	if err := h.Ping(); err != nil {
 		http.Error(w, "Failed to ping database", http.StatusInternalServerError)
 		return

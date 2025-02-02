@@ -7,6 +7,7 @@ import (
 	"gomarketplace_api/internal/wholesaler/internal/models"
 	"gomarketplace_api/internal/wholesaler/internal/storage"
 	"gomarketplace_api/internal/wholesaler/internal/storage/repositories"
+	"gomarketplace_api/internal/wholesaler/pkg/requests"
 	"gomarketplace_api/pkg/dbconnect"
 	"gomarketplace_api/pkg/logger"
 	"io"
@@ -61,9 +62,20 @@ func (h *SizeHandler) GetSizeHandler(w http.ResponseWriter, r *http.Request) {
 	var err error
 
 	startTime := time.Now()
-	sizes, err = h.service.GetSizes()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+	var sizeReq requests.SizeRequest
+	if err := json.NewDecoder(r.Body).Decode(&sizeReq); err != nil {
+		http.Error(w, "Failed to decode request body", http.StatusBadRequest)
+		return
+	}
+
+	if len(sizeReq.ProductIDs) == 0 {
+		sizes, err = h.service.GetSizes()
+	} else {
+		sizes, err = h.service.GetSizesByIDs(sizeReq.ProductIDs)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	}
 
 	h.logger.Log("size handler response execution time: %v", time.Since(startTime))

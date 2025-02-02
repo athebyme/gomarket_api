@@ -1,44 +1,25 @@
 package clients
 
 import (
-	"encoding/json"
-	"fmt"
-	"gomarketplace_api/pkg/logger"
+	"context"
 	"io"
-	"io/ioutil"
 	"net/http"
 )
 
-type AppellationsClient struct {
-	ApiURL string
-	log    logger.Logger
+type AppellationsFetcher struct {
+	BaseClient
 }
 
-func NewAppellationsClient(apiURL string, writer io.Writer) *AppellationsClient {
-	_log := logger.NewLogger(writer, "[WS AppellationClient]")
-
-	return &AppellationsClient{ApiURL: apiURL, log: _log}
+func NewAppellationsFetcher(apiURL string, writer io.Writer) *AppellationsFetcher {
+	return &AppellationsFetcher{
+		BaseClient: *NewBaseClient(apiURL, writer, "[WS BarcodesClient]"),
+	}
 }
 
-func (c AppellationsClient) FetchAppellations() (map[int]interface{}, error) {
-	c.log.Log("Got signal for FetchAppellations()")
-	resp, err := http.Get(fmt.Sprintf("%s/api/appellations", c.ApiURL))
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch Appellations, status code: %d", resp.StatusCode)
-	}
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
+func (c AppellationsFetcher) Fetch(ctx context.Context, request interface{}) (interface{}, error) {
 	var appellations map[int]interface{}
-	if err := json.Unmarshal(body, &appellations); err != nil {
+	err := c.doRequest(ctx, http.MethodPost, "/api/appellations", request, &appellations)
+	if err != nil {
 		return nil, err
 	}
 

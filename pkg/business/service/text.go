@@ -14,13 +14,14 @@ type ITextService interface {
 	RemoveAllTags(input string) string
 	ReduceToLength(input string, length int) string
 	ClearAndReduce(input string, length int) string
-	FitIfPossible(input string, fit string, length int) string
+	FitIfPossible(input string, fit string, length int) (bool, string)
 	RemoveLinks(input string) string
 	SmartReduceToLength(input string, length int) string
 	RemoveUnimportantSymbols(input string) string
 	ReplaceEngLettersToRus(input string) string
+	Replace(input string, replaceBy string) (bool, string)
 	RemoveWord(input string, word string) string
-	ReplaceSymbols(input string, replace map[string]string) string
+	ReplaceSymbols(input string, replace map[string]string) (bool, string)
 	AddWordIfNotExistsToFront(input string, word string) string
 	AddWordIfNotExistsToEnd(input string, word string) string
 	ValidateUTF8Word(word string) string
@@ -109,11 +110,12 @@ func (ts *TextService) ReplaceEngLettersToRus(input string) string {
 	return input
 }
 
-func (ts *TextService) ReplaceSymbols(input string, replace map[string]string) string {
+func (ts *TextService) ReplaceSymbols(input string, replace map[string]string) (bool, string) {
+	newStr := input
 	for k, v := range replace {
-		input = strings.Replace(input, k, v, -1)
+		newStr = strings.ReplaceAll(newStr, k, v)
 	}
-	return input
+	return input != newStr, newStr
 }
 
 func (ts *TextService) RemoveTags(input string) string {
@@ -142,34 +144,38 @@ func (ts *TextService) ReduceToLength(input string, length int) string {
 	lastNonPrepositionIndex := -1
 
 	for i, word := range words {
-		if totalLength+len(word) > length {
+		wordLength := utf8.RuneCountInString(word) // Считаем длину в символах
+
+		// Проверяем, помещается ли слово
+		if totalLength+wordLength > length {
 			break
 		}
 
-		if _, ok := prepositions[strings.ToLower(word)]; ok && totalLength+len(word)+3 >= length {
-			break
-		}
-
-		if i > 0 {
+		// Добавляем пробел между словами, если это не первое слово
+		if i > 0 && totalLength+wordLength+1 < length {
 			builder.WriteString(" ")
-			totalLength++
+			totalLength++ // Учитываем пробел
 		}
 
+		// Добавляем слово в строку
 		builder.WriteString(word)
-		totalLength += len(word)
 
-		if _, ok := prepositions[strings.ToLower(word)]; !ok {
-			lastNonPrepositionIndex = builder.Len()
+		// Проверяем, является ли слово предлогом
+		if _, isPreposition := prepositions[strings.ToLower(word)]; !isPreposition {
+			lastNonPrepositionIndex = utf8.RuneCountInString(builder.String()) // Запоминаем индекс последнего непредлога
 		}
+
+		totalLength += wordLength
 	}
 
-	// избавляемся от предлога в конце
-	if lastNonPrepositionIndex != -1 && lastNonPrepositionIndex < builder.Len() {
+	// Убираем предлог в конце, если есть
+	if lastNonPrepositionIndex != -1 && lastNonPrepositionIndex < utf8.RuneCountInString(builder.String()) {
 		return builder.String()[:lastNonPrepositionIndex]
 	}
 
 	return builder.String()
 }
+
 func (ts *TextService) ClearAndReduce(input string, length int) string {
 	// Шаг 1: Удаляем все теги
 	cleaned := ts.RemoveAllTags(input)
@@ -196,12 +202,28 @@ func (ts *TextService) SmartReduceToLength(input string, length int) string {
 }
 
 func (ts *TextService) RemoveUnimportantSymbols(input string) string {
-	re := regexp.MustCompile(`[%№(),."'|/\-+&]`)
+	re := regexp.MustCompile(`[%№(),."'|/\&]`)
 	return re.ReplaceAllString(input, "")
 }
 
 func (ts *TextService) RemoveWord(input string, word string) string {
 	return regexp.MustCompile(word).ReplaceAllString(input, "")
+}
+
+func (ts *TextService) Replace(input string, replaceBy string) (bool, string) {
+	re, err := regexp.Compile(input)
+	if err != nil {
+		return false, input
+	}
+
+	defer func() {
+		if rec := recover(); rec != nil {
+			re = nil
+		}
+	}()
+
+	replaced := re.ReplaceAllString(input, replaceBy)
+	return input != replaced, replaced
 }
 
 func (ts *TextService) AddWordIfNotExistsToFront(input string, word string) string {
@@ -227,11 +249,12 @@ func (ts *TextService) AddWordIfNotExists(input string, word string, index int) 
 	return input
 }
 
-func (ts *TextService) FitIfPossible(input string, fit string, length int) string {
+func (ts *TextService) FitIfPossible(input string, fit string, length int) (bool, string) {
 	if len(input)+len(fit)+1 > length {
-		return input
+		return false, input
 	}
-	return ts.AddWordIfNotExistsToEnd(input, fit)
+	result := ts.AddWordIfNotExistsToEnd(input, fit)
+	return input != result, result
 }
 
 func (ts *TextService) AddCategoryIfNotExistInAppellation(appellation string, category string) string {

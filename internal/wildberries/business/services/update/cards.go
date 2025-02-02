@@ -17,6 +17,7 @@ import (
 	"gomarketplace_api/internal/wildberries/business/services/get"
 	"gomarketplace_api/internal/wildberries/business/services/parse"
 	clients2 "gomarketplace_api/internal/wildberries/pkg/clients"
+	"gomarketplace_api/metrics"
 	"gomarketplace_api/pkg/business/service"
 	"io"
 	"io/ioutil"
@@ -31,13 +32,12 @@ import (
 )
 
 const (
-	uploadBatchSize  = 2000
-	maxBatchSize     = 1 << 20 // 1 MB
-	goroutineCount   = 5
-	requestRateLimit = 70 // requests per minute
-	uploadRateLimit  = 10
-	maxTitleLength   = 60
-	maxDescLength    = 2000
+	uploadBatchSize = 2000
+	maxBatchSize    = 1 << 20 // 1 MB
+	goroutineCount  = 5
+	uploadRateLimit = 10
+	maxTitleLength  = 60
+	maxDescLength   = 2000
 )
 
 type CardProcessor struct {
@@ -54,14 +54,8 @@ type CardUpdateService struct {
 	cardBuilder         *builder.CardBuilder
 	brandService        parse.BrandService
 	defaultValues       values.WildberriesValues
-	metrics             *updateMetrics
+	metrics             *metrics.UpdateMetrics
 	services.AuthEngine
-}
-
-type updateMetrics struct {
-	updatedCount                 atomic.Int32
-	numberOfErroredNomenclatures atomic.Int32
-	goroutinesNmsCount           atomic.Int32
 }
 
 type batchProcessor struct {
@@ -93,7 +87,7 @@ func (bp *batchProcessor) flush() {
 	}
 }
 
-func NewCardUpdateService(nservice *get.SearchEngine, textService service.ITextService, wsClientUrl string, auth services.AuthEngine, writer io.Writer, brandService parse.BrandService, wbDefaultValues values.WildberriesValues) *CardUpdateService {
+func NewCardUpdateService(searchNms *get.SearchEngine, textService service.ITextService, wsClientUrl string, auth services.AuthEngine, writer io.Writer, brandService parse.BrandService, wbDefaultValues values.WildberriesValues) *CardUpdateService {
 
 	client, err := clients2.NewWServiceClient(wsClientUrl, writer)
 	if err != nil {
@@ -101,7 +95,7 @@ func NewCardUpdateService(nservice *get.SearchEngine, textService service.ITextS
 	}
 
 	return &CardUpdateService{
-		nomenclatureService: *nservice,
+		nomenclatureService: *searchNms,
 		wsclient:            client,
 		textService:         textService,
 		brandService:        brandService,
@@ -166,7 +160,7 @@ func (cu *CardUpdateService) UpdateCardNaming(ctx context.Context, settings requ
 	uploadWg.Wait()
 
 	cu.logResults()
-	return int(cu.metrics.updatedCount.Load()), nil
+	return int(cu.metrics.UpdatedCount.Load()), nil
 }
 
 // считываем канал номенклатур, валидируем и отдаем
@@ -182,7 +176,7 @@ func (cu *CardUpdateService) processNomenclatures(
 	defer wg.Done()
 
 	for nomenclature := range nomenclatureCh {
-		cu.metrics.goroutinesNmsCount.Add(1)
+		cu.metrics.GoroutinesNmsCount.Add(1)
 
 		processor := &CardProcessor{nomenclature: nomenclature}
 		if !cu.validateAndPrepareProcessor(processor, processedItems, appellationsMap, descriptionsMap) {
@@ -216,14 +210,14 @@ func (cu *CardUpdateService) validateAndPrepareProcessor(
 	// Получение и валидация globalID
 	globalID, err := processor.nomenclature.GlobalID()
 	if err != nil || globalID == 0 {
-		cu.metrics.numberOfErroredNomenclatures.Add(1)
+		cu.metrics.ErroredNomenclatures.Add(1)
 		return false
 	}
 
 	// Проверка наличия appellation
 	appellation, ok := appellationsMap[globalID]
 	if !ok {
-		cu.metrics.numberOfErroredNomenclatures.Add(1)
+		cu.metrics.ErroredNomenclatures.Add(1)
 		return false
 	}
 
@@ -309,17 +303,17 @@ func (cu *CardUpdateService) uploadWorker(
 				continue // Продолжаем с следующим батчем вместо полной остановки
 			}
 
-			cu.metrics.updatedCount.Add(int32(cards))
+			cu.metrics.UpdatedCount.Add(int32(cards))
 		}
 	}
 }
 
 func (cu *CardUpdateService) logResults() {
 	log.Printf("Goroutines fetchers got (%d) nomenclatures",
-		cu.metrics.goroutinesNmsCount.Load())
+		cu.metrics.GoroutinesNmsCount.Load())
 	log.Printf("Update completed, total updated count: %d. Unfetched count: %d",
-		cu.metrics.updatedCount.Load(),
-		cu.metrics.numberOfErroredNomenclatures.Load())
+		cu.metrics.UpdatedCount.Load(),
+		cu.metrics.ErroredNomenclatures.Load())
 }
 
 func (cu *CardUpdateService) UpdateCardPackages(settings request2.Settings) (int, error) {

@@ -3,13 +3,17 @@ package app
 import (
 	"context"
 	"database/sql"
+	"golang.org/x/time/rate"
 	"gomarketplace_api/build/_postgres"
 	"gomarketplace_api/config"
 	request2 "gomarketplace_api/internal/wildberries/business/models/dto/request"
+	"gomarketplace_api/internal/wildberries/business/models/dto/response"
 	"gomarketplace_api/internal/wildberries/business/services"
 	get2 "gomarketplace_api/internal/wildberries/business/services/get"
 	"gomarketplace_api/internal/wildberries/business/services/parse"
 	update2 "gomarketplace_api/internal/wildberries/business/services/update"
+	"gomarketplace_api/internal/wildberries/business/services/update/operations/domain"
+	clients2 "gomarketplace_api/internal/wildberries/pkg/clients"
 	"gomarketplace_api/internal/wildberries/storage"
 	"gomarketplace_api/pkg/business/service"
 	"gomarketplace_api/pkg/dbconnect"
@@ -105,16 +109,18 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	//	return
 	//}
 
-	count, err := s.cardUpdateService.CheckSearchEngine(request2.Settings{
-		Sort:   request2.Sort{Ascending: false},
-		Filter: request2.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-		Cursor: request2.Cursor{Limit: 10000},
-	}, "")
-	if err != nil {
-		return
-	}
+	//count, err := s.cardUpdateService.CheckSearchEngine(request2.Settings{
+	//	Sort:   request2.Sort{Ascending: false},
+	//	Filter: request2.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+	//	Cursor: request2.Cursor{Limit: 10000},
+	//}, "")
+	//if err != nil {
+	//	return
+	//}
+	//
+	//log.Printf("Search engine found %d nm's", count)
 
-	log.Printf("Search engine found %d nm's", count)
+	s.updateMediaFiles("http://localhost:8081")
 
 	//s.log.Log("Database data is up to date. ")
 
@@ -134,6 +140,74 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	//	return
 	//}
 
+}
+
+func (s *WildberriesServer) updateMediaFiles(wsClientUrl string) {
+	s.log.SetPrefix("[ Media Updater ] ")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var authEngine services.AuthEngine
+	authEngine = services.NewBearerAuth(s.ApiKey)
+
+	var db, err = s.Connect()
+	if err != nil {
+		s.log.Log("Error connecting to PostgreSQL: %s\n", err)
+	}
+	defer db.Close()
+
+	client, err := clients2.NewWServiceClient(wsClientUrl, s.log)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	searchConfig := get2.Config{
+		WorkerCount:    5,
+		MaxRetries:     get2.MaxRetries,
+		RetryInterval:  get2.RetryInterval,
+		RequestTimeout: get2.RequestTimeout,
+	}
+
+	nmSearchEngine := get2.NewSearchEngine(db, authEngine, s.log, searchConfig)
+
+	updateOp := domain.NewMediaUpdateOperation(client)
+	_, err = updateOp.MediaUrls(ctx, false)
+	if err != nil {
+		return
+	}
+	limiter := rate.NewLimiter(rate.Every(time.Minute/50), 15)
+
+	mediaUpateService := update2.NewUpdateService(
+		updateOp,
+		domain.MediaUploadURL,
+		limiter,
+		5,
+		authEngine)
+
+	nomenclatureChan := make(chan response.Nomenclature)
+	go func() {
+
+		settings := request2.Settings{
+			Sort:   request2.Sort{Ascending: false},
+			Filter: request2.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
+			Cursor: request2.Cursor{Limit: 10000}}
+		locale := ""
+
+		if err := nmSearchEngine.GetNomenclaturesWithLimitConcurrentlyPutIntoChannel(ctx, settings, locale, nomenclatureChan); err != nil {
+			log.Printf("Error fetching nomenclatures concurrently: %s", err)
+		}
+	}()
+
+	updatedCount, err := mediaUpateService.Update(ctx, nomenclatureChan)
+	if err != nil {
+		log.Fatalf("Ошибка обновления: %s", err)
+	}
+
+	metrics := mediaUpateService.Metrics()
+
+	log.Printf("Обновлено карточек: %d", updatedCount)
+	log.Printf("Обработано карточек: %d, с ошибками: %d",
+		metrics.ProcessedCount.Load(), metrics.ErroredNomenclatures.Load())
 }
 
 func (s *WildberriesServer) updateNames() interface{} {

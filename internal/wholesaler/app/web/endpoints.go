@@ -2,8 +2,10 @@ package web
 
 import (
 	handlers2 "gomarketplace_api/internal/wholesaler/app/web/handlers"
+	"gomarketplace_api/pkg/middleware"
 	"log"
 	"net/http"
+	"time"
 )
 
 func SetupRoutes(handlers ...handlers2.Handler) {
@@ -41,38 +43,38 @@ func SetupRoutes(handlers ...handlers2.Handler) {
 
 	// Проверка и настройка маршрутов для ProductHandler
 	if productHandler, ok := handlerMap["ProductHandler"].(*handlers2.ProductHandler); ok {
-		mux.HandleFunc("/api/globalids", productHandler.GetGlobalIDsHandler)
-		mux.HandleFunc("/api/appellations", productHandler.GetAppellationHandler)
-		mux.HandleFunc("/api/descriptions", productHandler.GetDescriptionsHandler)
+		mux.Handle("/api/globalids", middleware.PrometheusMiddleware(http.HandlerFunc(productHandler.GetGlobalIDsHandler)))
+		mux.Handle("/api/appellations", middleware.PrometheusMiddleware(http.HandlerFunc(productHandler.GetAppellationHandler)))
+		mux.Handle("/api/descriptions", middleware.PrometheusMiddleware(http.HandlerFunc(productHandler.GetDescriptionsHandler)))
 	} else {
 		log.Fatalf("ProductHandler not provided")
 	}
 
 	if mediaHandler, ok := handlerMap["MediaHandler"].(*handlers2.MediaHandler); ok {
-		mux.HandleFunc("/api/media", mediaHandler.GetMediaHandler)
+		mux.Handle("/api/media", middleware.PrometheusMiddleware(http.HandlerFunc(mediaHandler.GetMediaHandler)))
 	} else {
 		log.Fatalf("MediaHandler not provided")
 	}
 
 	if priceHandler, ok := handlerMap["PriceHandler"].(*handlers2.PriceHandler); ok {
-		mux.HandleFunc("/api/price", priceHandler.GetPriceHandler)
+		mux.Handle("/api/price", middleware.PrometheusMiddleware(http.HandlerFunc(priceHandler.GetPriceHandler)))
 	} else {
 		log.Fatalf("PriceHandler not provided")
 	}
 
 	if sizeHandler, ok := handlerMap["SizeHandler"].(*handlers2.SizeHandler); ok {
-		mux.HandleFunc("/api/size", sizeHandler.GetSizeHandler)
+		mux.Handle("/api/size", middleware.PrometheusMiddleware(http.HandlerFunc(sizeHandler.GetSizeHandler)))
 	} else {
 		log.Fatalf("SizeHandler not provided")
 	}
 
 	if brandHandler, ok := handlerMap["BrandHandler"].(*handlers2.BrandHandler); ok {
-		mux.HandleFunc("/api/brands", brandHandler.GetBrandHandler)
+		mux.Handle("/api/brands", middleware.PrometheusMiddleware(http.HandlerFunc(brandHandler.GetBrandHandler)))
 	} else {
 		log.Fatalf("BrandHandler not provided")
 	}
 	if barcodeHandler, ok := handlerMap["BarcodeHandler"].(*handlers2.BarcodeHandler); ok {
-		mux.HandleFunc("/api/barcodes", barcodeHandler.ServeHTTP)
+		mux.Handle("/api/barcodes", middleware.PrometheusMiddleware(http.HandlerFunc(barcodeHandler.ServeHTTP)))
 	} else {
 		log.Fatalf("BarcodeHandler not provided")
 	}
@@ -99,7 +101,9 @@ func enableCORS(next http.Handler) http.Handler {
 
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("Request received: %s %s", r.Method, r.URL.Path)
+		start := time.Now()
+		log.Printf("Started %s %s", r.Method, r.URL.Path)
 		next.ServeHTTP(w, r)
+		log.Printf("Completed %s in %v", r.URL.Path, time.Since(start))
 	})
 }

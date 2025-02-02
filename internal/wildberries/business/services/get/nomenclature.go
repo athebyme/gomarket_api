@@ -521,6 +521,11 @@ func (d *SearchEngine) CheckTotalNmCount(settings request2.Settings, locale stri
 	log.SetPrefix("[ TEST ] ")
 
 	var count int
+	var msc int
+
+	if _, err := d.prepareGlobalIDs(); err != nil {
+		return 0, fmt.Errorf("error")
+	}
 
 	nomenclatureChan := make(chan response.Nomenclature)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -532,9 +537,14 @@ func (d *SearchEngine) CheckTotalNmCount(settings request2.Settings, locale stri
 		}
 	}()
 
-	for range nomenclatureChan {
+	for nm := range nomenclatureChan {
+		if _, err := nm.GlobalID(); err != nil {
+			msc++
+		}
 		count++
 	}
+
+	log.Printf("found : %d msc articulars", msc)
 
 	return count, nil
 }
@@ -632,19 +642,54 @@ func (d *SearchEngine) GetDBNomenclatures() (map[int]struct{}, error) {
 	return nmIDs, nil
 }
 
-func contains(globalIDsMap map[int]struct{}, globalId int) bool {
-	_, exists := globalIDsMap[globalId]
-	return exists
+// ProcessNomenclatures запускает worker'ы для обработки номенклатур из канала.
+// processFunc обрабатывает отдельную номенклатуру и возвращает (optional) модель для загрузки.
+func ProcessNomenclatures(
+	nomenclatureChan <-chan response.Nomenclature,
+	workers int,
+	processedItems *sync.Map,
+	processFunc func(workerID int, nomenclature response.Nomenclature) (request2.Model, bool),
+	outputChan chan<- request2.Model,
+) {
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(workerID int) {
+			defer wg.Done()
+			for nomenclature := range nomenclatureChan {
+				// Проверка на дубликаты по VendorCode
+				if _, loaded := processedItems.LoadOrStore(nomenclature.VendorCode, true); loaded {
+					continue
+				}
+				if model, ok := processFunc(workerID, nomenclature); ok {
+					outputChan <- model
+				}
+			}
+		}(i)
+	}
+	wg.Wait()
+	close(outputChan)
 }
 
-func divideLimitsToPackets(totalCount int, packetSize int) []int {
-	var packets []int
-	for count := totalCount; count > 0; count -= packetSize {
-		if count >= packetSize {
-			packets = append(packets, packetSize)
-		} else {
-			packets = append(packets, count)
+// UploadWorker отправляет модели на сервер с учетом rate limiter'а.
+func UploadWorker(
+	ctx context.Context,
+	uploadChan <-chan request2.Model,
+	uploadURL string,
+	limiter *rate.Limiter,
+	processAndUploadFunc func(string, request2.Model) (int, error),
+	updatedCount *atomic.Int32,
+) {
+	for model := range uploadChan {
+		if err := limiter.Wait(ctx); err != nil {
+			log.Printf("Limiter error: %s", err)
+			continue
 		}
+		count, err := processAndUploadFunc(uploadURL, model)
+		if err != nil {
+			log.Printf("Error during upload: %s", err)
+			continue
+		}
+		updatedCount.Add(int32(count))
 	}
-	return packets
 }

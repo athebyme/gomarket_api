@@ -25,11 +25,6 @@ var (
 	)
 )
 
-func init() {
-	prometheus.MustRegister(httpRequestsTotal)
-	prometheus.MustRegister(httpRequestDuration)
-}
-
 // RecordRequest записывает метрики для HTTP-запроса.
 func RecordRequest(method, endpoint string, statusCode int, duration time.Duration) {
 	status := classifyStatus(statusCode)
@@ -39,19 +34,27 @@ func RecordRequest(method, endpoint string, statusCode int, duration time.Durati
 
 // classifyStatus классифицирует HTTP-статус код в строку.
 func classifyStatus(statusCode int) string {
-	if statusCode >= 200 && statusCode < 300 {
+	switch {
+	case statusCode >= 200 && statusCode < 300:
 		return "2xx"
-	} else if statusCode >= 300 && statusCode < 400 {
+	case statusCode >= 300 && statusCode < 400:
 		return "3xx"
-	} else if statusCode >= 400 && statusCode < 500 {
+	case statusCode >= 400 && statusCode < 500:
 		return "4xx"
-	} else if statusCode >= 500 && statusCode < 600 {
+	case statusCode >= 500 && statusCode < 600:
 		return "5xx"
+	default:
+		return "unknown"
 	}
-	return "unknown"
 }
 
-// MetricsHandler возвращает HTTP-обработчик для экспорта метрик Prometheus.
+// MetricsHandler возвращает HTTP-обработчик для экспорта метрик.
 func MetricsHandler() http.Handler {
-	return promhttp.Handler()
+	// Создаем новый реестр
+	registry := prometheus.NewRegistry()
+	// Регистрируем только нужные метрики
+	registry.MustRegister(httpRequestsTotal)
+	registry.MustRegister(httpRequestDuration)
+	// Возвращаем обработчик для нового реестра
+	return promhttp.HandlerFor(registry, promhttp.HandlerOpts{})
 }

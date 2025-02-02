@@ -39,6 +39,7 @@ func registerClients(fetcherChain *pkg.FetcherChain, host string, writer io.Writ
 		{"sizes", clients.NewSizesClient(host, writer)},
 		{"brands", clients.NewBrandsClient(host, writer)},
 		{"barcodes", clients.NewBarcodesClient(host, writer)},
+		{"media", clients.NewImageClient(host, writer)},
 	}
 
 	for _, client := range clientsToRegister {

@@ -58,7 +58,7 @@ func NewSearchEngine(db *sql.DB, auth services.AuthEngine, writer io.Writer, con
 		auth:    auth,
 		writer:  writer,
 		config:  config,
-		limiter: rate.NewLimiter(rate.Every(time.Minute), 70), // Пример: 10 запросов в секунду
+		limiter: rate.NewLimiter(rate.Every(time.Minute/70), 10),
 	}
 }
 
@@ -140,19 +140,14 @@ func (d *SearchEngine) GetNomenclaturesWithLimitConcurrentlyPutIntoChannel(
 	ctx context.Context,
 	settings request2.Settings,
 	locale string,
-	nomenclatureChan chan<- response.Nomenclature,
+	nomenclatureChan chan response.Nomenclature,
 ) error {
 	defer log.Printf("Search engine finished its job.")
 
 	limit := settings.Cursor.Limit
 	log.Printf("Getting Wildberries nomenclatures with limit: %d", limit)
 
-	globalIDsMap, err := d.prepareGlobalIDs()
-	if err != nil {
-		return fmt.Errorf("failed to prepare global IDs: %w", err)
-	}
-
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithTimeout(ctx, time.Minute*5)
 	defer cancel()
 
 	cursorManager := NewSafeCursorManager()
@@ -177,26 +172,47 @@ func (d *SearchEngine) GetNomenclaturesWithLimitConcurrentlyPutIntoChannel(
 			locale,
 			limit,
 			&totalProcessed,
-			globalIDsMap,
 			cursorManager,
 		)
 	}
 
-	taskChan <- request2.Cursor{NmID: 0, UpdatedAt: "", Limit: 100}
+	log.Printf("Sending initial task to taskChan")
+	select {
+	case taskChan <- request2.Cursor{NmID: 0, UpdatedAt: "", Limit: 100}:
+		log.Printf("Initial task sent successfully")
+	case <-ctx.Done():
+		log.Printf("Context cancelled while sending initial task")
+		return ctx.Err()
+	}
 
 	go func() {
 		wg.Wait()
-		close(nomenclatureChan)
+		log.Printf("Starting cleanup goroutine")
+		log.Printf("All workers finished, closing channels")
+		close(taskChan)
 		close(errChan)
+		log.Printf("Channels closed")
 	}()
 
 	for err := range errChan {
 		if err == nil {
 			continue
 		}
-		if errors.Is(err, ErrNoMoreData) || errors.Is(err, ErrTotalLimitReached) {
+		log.Printf("Received error from worker: %v", err)
+
+		if errors.Is(err, ErrNoMoreData) {
+			log.Printf("No more data to process")
 			continue
 		}
+		if errors.Is(err, ErrTotalLimitReached) {
+			log.Printf("Total limit reached")
+			continue
+		}
+		if errors.Is(err, ErrContextCanceled) {
+			log.Printf("Context was canceled")
+			continue
+		}
+
 		cancel()
 		return fmt.Errorf("worker error: %w", err)
 	}
@@ -208,23 +224,19 @@ func (d *SearchEngine) safeWorker(
 	ctx context.Context,
 	workerID int,
 	wg *sync.WaitGroup,
-	taskChan <-chan request2.Cursor,
+	taskChan chan request2.Cursor,
 	nomenclatureChan chan<- response.Nomenclature,
-	errChan chan<- error,
+	errChan chan error,
 	settings request2.Settings,
 	locale string,
 	totalLimit int,
 	totalProcessed *atomic.Int32,
-	globalIDsMap map[int]struct{},
 	cursorManager *SafeCursorManager,
 ) {
 	defer func() {
 		log.Printf("Worker %d: job is done.", workerID)
 		wg.Done()
 	}()
-
-	writeTaskChan := make(chan request2.Cursor, WorkerCount)
-	defer close(writeTaskChan)
 
 	for {
 		select {
@@ -250,19 +262,11 @@ func (d *SearchEngine) safeWorker(
 				locale,
 				totalLimit,
 				totalProcessed,
-				writeTaskChan,
-				globalIDsMap,
+				taskChan,
 			)
 
-			select {
-			case <-ctx.Done():
-				errChan <- ErrContextCanceled
-				return
-			case errChan <- err:
-				if err != nil && !errors.Is(err, ErrNoMoreData) && !errors.Is(err, ErrTotalLimitReached) {
-					return
-				}
-				continue
+			if err != nil && !errors.Is(err, ErrNoMoreData) && !errors.Is(err, ErrTotalLimitReached) {
+				errChan <- err
 			}
 		}
 	}
@@ -278,9 +282,9 @@ func (d *SearchEngine) processSafeCursorTask(
 	totalLimit int,
 	totalProcessed *atomic.Int32,
 	taskChan chan<- request2.Cursor,
-	globalIDsMap map[int]struct{},
 ) error {
 	if err := d.limiter.Wait(ctx); err != nil {
+		log.Printf("Worker %d: Rate limiter error: %v", workerID, err)
 		return fmt.Errorf("%w: %v", ErrRateLimiter, err)
 	}
 
@@ -296,13 +300,9 @@ func (d *SearchEngine) processSafeCursorTask(
 		return fmt.Errorf("failed to get nomenclatures: %w", err)
 	}
 
-	if len(nomenclatureResponse.Data) == 0 {
-		return ErrNoMoreData
-	}
-
 	lastNomenclature := nomenclatureResponse.Data[len(nomenclatureResponse.Data)-1]
 
-	if totalProcessed.Load() < int32(totalLimit) {
+	if len(nomenclatureResponse.Data) == cursor.Limit {
 		select {
 		case taskChan <- request2.Cursor{
 			NmID:      lastNomenclature.NmID,
@@ -315,24 +315,21 @@ func (d *SearchEngine) processSafeCursorTask(
 	}
 
 	for _, nomenclature := range nomenclatureResponse.Data {
+		totalProcessed.Add(1)
 		if totalProcessed.Load() >= int32(totalLimit) {
 			return ErrTotalLimitReached
-		}
-
-		nmGlobalID, err := nomenclature.GlobalID()
-		if err != nil {
-			continue
-		}
-		if _, exists := globalIDsMap[nmGlobalID]; !exists {
-			continue
 		}
 
 		select {
 		case <-ctx.Done():
 			return ErrContextCanceled
 		case nomenclatureChan <- nomenclature:
-			totalProcessed.Add(1)
 		}
+	}
+
+	if len(nomenclatureResponse.Data) < cursor.Limit {
+		defer close(nomenclatureChan)
+		return ErrNoMoreData
 	}
 
 	return nil
@@ -523,7 +520,7 @@ func (d *SearchEngine) CheckTotalNmCount(settings request2.Settings, locale stri
 	log.Printf("You are testing search engine")
 	log.SetPrefix("[ TEST ] ")
 
-	var count atomic.Int32
+	var count int
 
 	nomenclatureChan := make(chan response.Nomenclature)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -536,10 +533,10 @@ func (d *SearchEngine) CheckTotalNmCount(settings request2.Settings, locale stri
 	}()
 
 	for range nomenclatureChan {
-		count.Add(1)
+		count++
 	}
 
-	return int(count.Load()), nil
+	return count, nil
 }
 
 func (d *SearchEngine) insertBatchNomenclatures(batch []interface{}) error {

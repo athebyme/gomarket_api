@@ -163,7 +163,7 @@ func (s *WildberriesServer) uploadProducts(ctx context.Context, auth services.Au
 	}
 
 	searchConfig := get2.Config{
-		WorkerCount:    5,
+		WorkerCount:    get2.WorkerCount,
 		MaxRetries:     get2.MaxRetries,
 		RetryInterval:  get2.RetryInterval,
 		RequestTimeout: get2.RequestTimeout,

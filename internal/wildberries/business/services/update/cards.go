@@ -126,7 +126,6 @@ func (cu *CardUpdateService) UpdateCardNaming(ctx context.Context, settings requ
 	// Инициализация каналов и лимитеров
 	nomenclatureCh := make(chan response2.Nomenclature)
 	uploadCh := make(chan []request2.Model)
-	responseLimiter := rate.NewLimiter(rate.Every(time.Minute/requestRateLimit), requestRateLimit)
 	uploadLimiter := rate.NewLimiter(rate.Every(time.Minute/uploadRateLimit), uploadRateLimit)
 
 	// Создание процессора пакетов
@@ -140,7 +139,7 @@ func (cu *CardUpdateService) UpdateCardNaming(ctx context.Context, settings requ
 	processedItems := &sync.Map{}
 
 	// Запуск получения номенклатур
-	go cu.fetchNomenclatures(ctx, settings, nomenclatureCh, responseLimiter)
+	go cu.fetchNomenclatures(ctx, settings, nomenclatureCh)
 
 	// Запуск обработчиков
 	for i := 0; i < goroutineCount; i++ {
@@ -270,9 +269,7 @@ func (cu *CardUpdateService) fetchRequiredData(ctx context.Context) (map[int]int
 func (cu *CardUpdateService) fetchNomenclatures(
 	ctx context.Context,
 	settings request2.Settings,
-	nomenclatureCh chan<- response2.Nomenclature,
-	responseLimiter *rate.Limiter,
-) {
+	nomenclatureCh chan response2.Nomenclature) {
 	defer close(nomenclatureCh)
 
 	err := cu.nomenclatureService.GetNomenclaturesWithLimitConcurrentlyPutIntoChannel(

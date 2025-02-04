@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	clients2 "gomarketplace_api/internal/wholesaler/pkg/clients"
 	"gomarketplace_api/internal/wildberries/business/models/dto/request"
@@ -12,6 +13,10 @@ import (
 
 const (
 	MediaUploadURL = "https://content-api.wildberries.ru/content/v3/media/save"
+)
+
+var (
+	ErrMediaFilesContainsMoreData = errors.New("media files contains more than file than base has")
 )
 
 type MediaUpdateOperation struct {
@@ -53,6 +58,9 @@ func (op *MediaUpdateOperation) Process(ctx context.Context, nom response.Nomenc
 		return nil, fmt.Errorf("invalid globalID: %w", err)
 	}
 	urls := op.mediaMap[globalID]
+	if len(urls) < len(nom.Photos) {
+		return nil, ErrMediaFilesContainsMoreData
+	}
 	if len(urls) == 1 {
 		urls = append(urls, urls[0])
 	}

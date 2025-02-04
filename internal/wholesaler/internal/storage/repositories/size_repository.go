@@ -8,6 +8,7 @@ import (
 	"gomarketplace_api/internal/wholesaler/internal/storage"
 	"gomarketplace_api/pkg/logger"
 	"io"
+	"log"
 )
 
 type SizeRepository struct {
@@ -17,12 +18,12 @@ type SizeRepository struct {
 }
 
 func NewSizeRepository(db *sql.DB, updater storage.Updater, logWriter io.Writer) *SizeRepository {
-	log := logger.NewLogger(logWriter, "[SizeRepository]")
-	log.Log("SizeRepository successfully created.")
+	debugLogger := logger.NewLogger(logWriter, "[SizeRepository]")
+	debugLogger.Log("SizeRepository successfully created.")
 	return &SizeRepository{
 		db:      db,
 		updater: updater,
-		logger:  log,
+		logger:  debugLogger,
 	}
 }
 func (r *SizeRepository) GetSizes() ([]models.SizeData, error) {
@@ -168,6 +169,69 @@ func (r *SizeRepository) GetSizesByIDs(ids []int) ([]models.SizeData, error) {
 	}
 
 	return result, nil
+}
+
+func (r *SizeRepository) Populate() error {
+	// Запрос на получение данных из таблицы wholesaler.products
+	productsQuery := `SELECT global_id, dimension FROM wholesaler.products`
+	rows, err := r.db.Query(productsQuery)
+	if err != nil {
+		return fmt.Errorf("failed to select from wholesaler.products: %w", err)
+	}
+	defer rows.Close()
+
+	// Подготавливаем запросы для вставки данных
+	insertSizeStmt, err := r.db.Prepare("INSERT INTO wholesaler.sizes (global_id) VALUES ($1) RETURNING size_id")
+	if err != nil {
+		return fmt.Errorf("failed to prepare insertSize statement: %w", err)
+	}
+	defer insertSizeStmt.Close()
+
+	insertSizeValueStmt, err := r.db.Prepare("INSERT INTO wholesaler.size_values (size_id, descriptor, value_type, value, unit) VALUES ($1, $2, $3, $4, $5)")
+	if err != nil {
+		return fmt.Errorf("failed to prepare insertSizeValue statement: %w", err)
+	}
+	defer insertSizeValueStmt.Close()
+
+	// Обрабатываем каждый товар
+	for rows.Next() {
+		var globalID int
+		var dimension string
+		if err := rows.Scan(&globalID, &dimension); err != nil {
+			return fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		// Обрабатываем размеры из поля dimension
+		sizeDescriptors, err := storage.ParseSizes(dimension)
+		if err != nil {
+			return fmt.Errorf("failed to parse sizes for globalID %d: %w", globalID, err)
+		}
+
+		// Вставляем размер
+		var sizeID int
+		err = insertSizeStmt.QueryRow(globalID).Scan(&sizeID)
+		if err != nil {
+			return fmt.Errorf("failed to insert into sizes for globalID %d: %w", globalID, err)
+		}
+
+		// Вставляем значения размеров
+		for _, size := range sizeDescriptors {
+			if size.Unit == "" {
+				log.Printf("UNIT WARN : %s for %d is not defined", size.Unit, sizeID)
+			}
+			_, err = insertSizeValueStmt.Exec(sizeID, size.Descriptor, size.Type, size.Value, size.Unit)
+			if err != nil {
+				return fmt.Errorf("failed to insert into size_values for globalID %d: %w", globalID, err)
+			}
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("error iterating over rows: %w", err)
+	}
+
+	log.Println("Data population completed successfully.")
+	return nil
 }
 
 func (r *SizeRepository) Update(args ...[]string) error {

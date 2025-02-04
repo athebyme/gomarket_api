@@ -147,7 +147,7 @@ func (d *SearchEngine) GetNomenclaturesWithLimitConcurrentlyPutIntoChannel(
 	limit := settings.Cursor.Limit
 	log.Printf("Getting Wildberries nomenclatures with limit: %d", limit)
 
-	ctx, cancel := context.WithTimeout(ctx, time.Minute*5)
+	ctx, cancel := context.WithTimeout(ctx, time.Minute*30)
 	defer cancel()
 
 	cursorManager := NewSafeCursorManager()

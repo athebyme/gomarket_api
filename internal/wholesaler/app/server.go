@@ -3,9 +3,11 @@ package app
 import (
 	"gomarketplace_api/internal/wholesaler/internal/storage"
 	"gomarketplace_api/internal/wholesaler/internal/storage/repositories"
+	"gomarketplace_api/migrations/infrastructure"
 	"gomarketplace_api/pkg/dbconnect"
 	"gomarketplace_api/pkg/dbconnect/migration"
 	"log"
+	"os"
 )
 
 type WholesalerServer struct {
@@ -16,7 +18,7 @@ func NewWServer(dbCon dbconnect.Database) *WholesalerServer {
 	return &WholesalerServer{dbCon}
 }
 
-func (s *WholesalerServer) Run(wg *chan struct{}) {
+func (s *WholesalerServer) Run() {
 	var db, err = s.Connect()
 	if err != nil {
 		log.Printf("Error connecting to PostgreSQL: %s\n", err)
@@ -24,15 +26,15 @@ func (s *WholesalerServer) Run(wg *chan struct{}) {
 	defer db.Close()
 
 	migrationApply := []migration.MigrationInterface{
-		&storage.WholesalerSchema{},
-		&storage.MigrationsSchema{},
-		&storage.Metadata{},
-		&storage.WholesalerProducts{},
-		&storage.WholesalerDescriptions{},
-		&storage.WholesalerPrice{},
-		&storage.WholesalerStock{},
-		&storage.WholesalerMedia{},
-		&storage.ProductSize{},
+		&infrastructure.WholesalerSchema{},
+		&infrastructure.MigrationsSchema{},
+		&infrastructure.Metadata{},
+		&infrastructure.WholesalerProducts{},
+		&infrastructure.WholesalerDescriptions{},
+		&infrastructure.WholesalerPrice{},
+		&infrastructure.WholesalerStock{},
+		&infrastructure.WholesalerMedia{},
+		&infrastructure.ProductSize{},
 	}
 
 	for _, _migration := range migrationApply {
@@ -67,6 +69,13 @@ func (s *WholesalerServer) Run(wg *chan struct{}) {
 
 	mediaRepo := repositories.NewMediaRepository(productRepo)
 	err = mediaRepo.PopulateMediaTable()
+	if err != nil {
+		log.Fatalf("Error populating media table: %s\n", err)
+	}
+
+	// ПОМЕНЯТЬ WRITER !
+	sizeRepo := repositories.NewSizeRepository(db, productUpdater, os.Stderr)
+	err = sizeRepo.Populate()
 	if err != nil {
 		log.Fatalf("Error populating media table: %s\n", err)
 	}
@@ -133,5 +142,4 @@ func (s *WholesalerServer) Run(wg *chan struct{}) {
 		return
 	}
 	defer stocksRepo.Close()
-	*wg <- struct{}{}
 }

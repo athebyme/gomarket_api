@@ -1,9 +1,8 @@
-package storage
+package infrastructure
 
 import (
 	"database/sql"
 	"fmt"
-	"gomarketplace_api/internal/wholesaler/internal/models"
 	"log"
 )
 
@@ -21,6 +20,14 @@ func (m *WholesalerProducts) UpMigration(db *sql.DB) error {
 	}
 	query :=
 		`
+		ALTER TABLE wholesaler.products 
+    	ADD COLUMN IF NOT EXISTS core_supplier_id INT 
+        REFERENCES core.suppliers(supplier_id)
+        DEFAULT 1;
+    
+   		CREATE UNIQUE INDEX IF NOT EXISTS wholesaler_products_global_id_idx 
+        ON wholesaler.products(global_id);
+
 		CREATE TABLE IF NOT EXISTS wholesaler.products (
 		global_id INT PRIMARY KEY,
 		model VARCHAR(255),
@@ -190,10 +197,49 @@ func (m *WholesalerPrice) UpMigration(db *sql.DB) error {
 type ProductSize struct{}
 
 func (m *ProductSize) UpMigration(db *sql.DB) error {
-	err := migrateAndParse(db)
+	// Проверяем, существует ли уже миграция
+	var migrationExists bool
+	err := db.QueryRow("SELECT EXISTS (SELECT 1 FROM migrations.migrations WHERE name = 'wholesaler.size')").Scan(&migrationExists)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to check migration status: %w", err)
 	}
+	if migrationExists {
+		log.Println("Migration 'wholesaler.size' already completed. Skipping.")
+		return nil
+	}
+
+	// Миграция: создание таблиц
+	tables := []string{
+		`CREATE TABLE IF NOT EXISTS wholesaler.sizes (
+			size_id SERIAL PRIMARY KEY,
+			global_id INT,
+			FOREIGN KEY (global_id) REFERENCES wholesaler.products(global_id)
+		);`,
+		`CREATE TABLE IF NOT EXISTS wholesaler.size_values (
+			value_id SERIAL PRIMARY KEY,
+			size_id INT,
+			descriptor VARCHAR(255),
+			value_type VARCHAR(10),  -- 'COMMON', 'MIN', 'MAX'
+			value DECIMAL(10, 2),
+		    unit VARCHAR(10),
+			FOREIGN KEY (size_id) REFERENCES wholesaler.sizes(size_id)
+		);`,
+	}
+
+	for _, query := range tables {
+		_, err := db.Exec(query)
+		if err != nil {
+			return fmt.Errorf("failed to execute table creation query: %w", err)
+		}
+	}
+
+	// Отметим миграцию как завершенную
+	_, err = db.Exec("INSERT INTO migrations.migrations (name, time) VALUES ('wholesaler.size', current_timestamp)")
+	if err != nil {
+		return fmt.Errorf("failed to mark migration as complete: %w", err)
+	}
+
+	log.Println("Migration 'wholesaler.size' completed successfully.")
 	return nil
 }
 
@@ -272,139 +318,4 @@ func (m *Metadata) UpMigration(db *sql.DB) error {
 
 	log.Println("Migration 'metadata' completed successfully.")
 	return nil
-}
-
-func migrateAndParse(db *sql.DB) error {
-	var migrationExists bool
-	err := db.QueryRow("SELECT EXISTS (SELECT 1 FROM migrations.migrations WHERE name = 'wholesaler.size')").Scan(&migrationExists)
-	if err != nil {
-		return fmt.Errorf("failed to check migration status: %w", err)
-	}
-	if migrationExists {
-		log.Println("Migration 'wholesaler.size' already completed. Skipping.")
-		return nil
-	}
-	sizeTableQuery := `
-		CREATE TABLE IF NOT EXISTS wholesaler.sizes (
-			size_id SERIAL PRIMARY KEY,
-			global_id INT,
-			FOREIGN KEY (global_id) REFERENCES wholesaler.products(global_id)
-		);
-	`
-
-	_, err = db.Exec(sizeTableQuery)
-	if err != nil {
-		return fmt.Errorf("failed to create sizes table: %w", err)
-	}
-
-	sizeValuesTableQuery := `
-		CREATE TABLE IF NOT EXISTS wholesaler.size_values (
-			value_id SERIAL PRIMARY KEY,
-			size_id INT,
-			descriptor VARCHAR(255),
-			value_type VARCHAR(10),  -- 'COMMON', 'MIN', 'MAX'
-			value DECIMAL(10, 2),
-		    unit VARCHAR(10),
-			FOREIGN KEY (size_id) REFERENCES wholesaler.sizes(size_id)
-		);
-	`
-	_, err = db.Exec(sizeValuesTableQuery)
-	if err != nil {
-		return fmt.Errorf("failed to create size_values table: %w", err)
-	}
-
-	productsQuery := `SELECT global_id, dimension FROM wholesaler.products`
-	rows, err := db.Query(productsQuery)
-	if err != nil {
-		return fmt.Errorf("failed to select from wholesaler.products: %w", err)
-	}
-	defer rows.Close()
-
-	insertSizeStmt, err := db.Prepare(`
-		INSERT INTO wholesaler.sizes (global_id)
-		VALUES ($1) RETURNING size_id
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to prepare insert statement for sizes: %w", err)
-	}
-	defer insertSizeStmt.Close()
-
-	insertSizeValueStmt, err := db.Prepare(`
-		INSERT INTO wholesaler.size_values (size_id, descriptor, value_type, value, unit)
-		VALUES ($1, $2, $3, $4, $5)
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to prepare insert statement for size_values: %w", err)
-	}
-	defer insertSizeValueStmt.Close()
-	err = processProducts(db)
-	if err != nil {
-		return err
-	}
-
-	_, err = db.Exec("INSERT INTO migrations.migrations (name, time) VALUES ('wholesaler.size', current_timestamp)")
-	if err != nil {
-		return fmt.Errorf("failed to mark migration as complete: %w", err)
-	}
-
-	log.Println("Migration 'sizes' completed successfully.")
-	return nil
-}
-
-func processProducts(db *sql.DB) error {
-	productsQuery := `SELECT global_id, dimension FROM wholesaler.products`
-	rows, err := db.Query(productsQuery)
-	if err != nil {
-		return fmt.Errorf("failed to select from wholesaler.products: %w", err)
-	}
-	defer rows.Close() // Обязательно закрываем rows
-
-	// Подготавливаем запросы *вне* цикла
-	insertSizeStmt, err := db.Prepare(
-		"INSERT INTO wholesaler.sizes (global_id) VALUES ($1) RETURNING size_id")
-	if err != nil {
-		return fmt.Errorf("failed to prepare insertSize statement: %w", err)
-	}
-	defer insertSizeStmt.Close()
-
-	insertSizeValueStmt, err := db.Prepare("INSERT INTO wholesaler.size_values (size_id, descriptor, value_type, value, unit) VALUES ($1, $2, $3, $4, $5)")
-	if err != nil {
-		return fmt.Errorf("failed to prepare insertSizeValue statement: %w", err)
-	}
-	defer insertSizeValueStmt.Close()
-
-	for rows.Next() {
-		var globalID int
-		var dimension string
-		if err := rows.Scan(&globalID, &dimension); err != nil {
-			return fmt.Errorf("failed to scan row: %w", err)
-		}
-		sizeDescriptors, err := ParseSizes(dimension) // Передаем dimension как строку
-		if err != nil {
-			return fmt.Errorf("failed to parse sizes for globalID %d: %w", globalID, err) // Более информативное сообщение
-		}
-
-		sizeMap := make(map[models.SizeDescriptorEnum]*float64)
-		for _, size := range sizeDescriptors {
-			sizeMap[size.Descriptor] = &size.Value
-		}
-
-		var sizeID int
-		err = insertSizeStmt.QueryRow(globalID).Scan(&sizeID)
-		if err != nil {
-			return fmt.Errorf("failed to insert into sizes for globalID %d: %w", globalID, err) // Более информативное сообщение
-		}
-
-		for _, size := range sizeDescriptors {
-			if size.Unit == "" {
-				log.Printf("UNIT WARN : %s for %d is not defined", size.Unit, sizeID)
-			}
-			_, err = insertSizeValueStmt.Exec(sizeID, size.Descriptor, size.Type, size.Value, size.Unit)
-			if err != nil {
-				return fmt.Errorf("failed to insert into size_values for globalID %d: %w", globalID, err) // Более информативное сообщение
-			}
-		}
-	}
-
-	return rows.Err() // Обрабатываем ошибки итерации по rows
 }

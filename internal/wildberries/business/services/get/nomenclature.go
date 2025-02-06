@@ -456,13 +456,13 @@ func (d *SearchEngine) UploadToDb(settings request2.Settings, locale string) (in
 			id, err := nomenclature.GlobalID()
 			if err != nil {
 				mu.Lock()
-				errs[id] = fmt.Sprintf("ID: %d -- Nomenclature upload failed: %s", nomenclature.VendorCode, err)
+				errs[id] = fmt.Sprintf("ID: %s -- Nomenclature upload failed: %s", nomenclature.VendorCode, err)
 				mu.Unlock()
 				continue
 			}
 			if _, ok := globalIDsFromDBMap[id]; !ok {
 				mu.Lock()
-				errs[id] = fmt.Sprintf("ID: %d -- GlobalIDMap not contains this id: %s", nomenclature.VendorCode, err)
+				errs[id] = fmt.Sprintf("ID: %s -- GlobalIDMap not contains this id: %s", nomenclature.VendorCode, err)
 				mu.Unlock()
 				continue
 			}
@@ -509,7 +509,7 @@ func (d *SearchEngine) UploadToDb(settings request2.Settings, locale string) (in
 	log.Printf("It looks like all the data is up to date\nSaw: %d", saw)
 
 	for k, v := range errs {
-		log.Printf("Error uploading nomenclature: %s. Details: %v", k, v)
+		log.Printf("Error uploading nomenclature: %d. Details: %v", k, v)
 	}
 
 	log.SetPrefix("")

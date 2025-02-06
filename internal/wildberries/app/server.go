@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"golang.org/x/time/rate"
-	"gomarketplace_api/build/_postgres"
 	"gomarketplace_api/config"
 	request2 "gomarketplace_api/internal/wildberries/business/models/dto/request"
 	"gomarketplace_api/internal/wildberries/business/models/dto/response"
@@ -15,6 +14,7 @@ import (
 	"gomarketplace_api/internal/wildberries/business/services/update/operations/domain"
 	clients2 "gomarketplace_api/internal/wildberries/pkg/clients"
 	"gomarketplace_api/internal/wildberries/storage"
+	"gomarketplace_api/migrations/marketplaces/wb"
 	"gomarketplace_api/pkg/business/service"
 	"gomarketplace_api/pkg/dbconnect"
 	"gomarketplace_api/pkg/dbconnect/migration"
@@ -37,9 +37,7 @@ func NewWbServer(connector dbconnect.Database, wbConfig config.WildberriesConfig
 	return &WildberriesServer{Database: connector, WildberriesConfig: wbConfig, log: _log, writer: writer}
 }
 
-func (s *WildberriesServer) Run(wg *chan struct{}) {
-	<-*wg
-
+func (s *WildberriesServer) Run() {
 	var authEngine services.AuthEngine
 	authEngine = services.NewBearerAuth(s.ApiKey)
 
@@ -68,14 +66,14 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	)
 
 	migrationApply := []migration.MigrationInterface{
-		&_postgres.CreateWBSchema{},
-		&_postgres.CreateWBCategoriesTable{},
-		&_postgres.CreateWBProductsTable{},
-		&_postgres.WBCharacteristics{},
-		&_postgres.WBNomenclatures{},
-		&_postgres.WBCardsActual{},
-		&_postgres.WBNomenclaturesHistory{},
-		&_postgres.WBChanges{},
+		&wb.CreateWBSchema{},
+		&wb.CreateWBCategoriesTable{},
+		&wb.CreateWBProductsTable{},
+		&wb.WBCharacteristics{},
+		&wb.WBNomenclatures{},
+		&wb.WBCardsActual{},
+		&wb.WBNomenclaturesHistory{},
+		&wb.WBChanges{},
 	}
 
 	for _, _migration := range migrationApply {
@@ -121,25 +119,6 @@ func (s *WildberriesServer) Run(wg *chan struct{}) {
 	//log.Printf("Search engine found %d nm's", count)
 
 	s.updateMediaFiles("http://localhost:8081")
-
-	//s.log.Log("Database data is up to date. ")
-
-	//_, err = s.cardUpdateService.UpdateCardMedia(request.Settings{
-	//	Sort:   request.Sort{Ascending: false},
-	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-	//	Cursor: request.Cursor{Limit: 10500},
-	//})
-	//err = s.updateByCategoryId()
-
-	//_, err = s.cardUpdateService.UpdateCardNaming(request.Settings{
-	//	Sort:   request.Sort{Ascending: false},
-	//	Filter: request.Filter{WithPhoto: -1, TagIDs: []int{}, TextSearch: "", AllowedCategoriesOnly: true, ObjectIDs: []int{}, Brands: []string{}, ImtID: 0},
-	//	Cursor: request.Cursor{Limit: 10000},
-	//})
-	//if err != nil {
-	//	return
-	//}
-
 }
 
 func (s *WildberriesServer) updateMediaFiles(wsClientUrl string) {

@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"golang.org/x/time/rate"
-	"gomarketplace_api/internal/wholesaler/pkg/clients"
+	"gomarketplace_api/internal/suppliers/wholesaler/pkg/clients"
 	"gomarketplace_api/internal/wildberries/business/dto/responses"
 	request2 "gomarketplace_api/internal/wildberries/business/models/dto/request"
 	"gomarketplace_api/internal/wildberries/business/models/dto/response"
@@ -147,7 +147,7 @@ func (d *SearchEngine) GetNomenclaturesWithLimitConcurrentlyPutIntoChannel(
 	limit := settings.Cursor.Limit
 	log.Printf("Getting Wildberries nomenclatures with limit: %d", limit)
 
-	ctx, cancel := context.WithTimeout(ctx, time.Minute*5)
+	ctx, cancel := context.WithTimeout(ctx, time.Minute*30)
 	defer cancel()
 
 	cursorManager := NewSafeCursorManager()
@@ -456,13 +456,13 @@ func (d *SearchEngine) UploadToDb(settings request2.Settings, locale string) (in
 			id, err := nomenclature.GlobalID()
 			if err != nil {
 				mu.Lock()
-				errs[id] = fmt.Sprintf("ID: %d -- Nomenclature upload failed: %s", nomenclature.VendorCode, err)
+				errs[id] = fmt.Sprintf("ID: %s -- Nomenclature upload failed: %s", nomenclature.VendorCode, err)
 				mu.Unlock()
 				continue
 			}
 			if _, ok := globalIDsFromDBMap[id]; !ok {
 				mu.Lock()
-				errs[id] = fmt.Sprintf("ID: %d -- GlobalIDMap not contains this id: %s", nomenclature.VendorCode, err)
+				errs[id] = fmt.Sprintf("ID: %s -- GlobalIDMap not contains this id: %s", nomenclature.VendorCode, err)
 				mu.Unlock()
 				continue
 			}
@@ -509,7 +509,7 @@ func (d *SearchEngine) UploadToDb(settings request2.Settings, locale string) (in
 	log.Printf("It looks like all the data is up to date\nSaw: %d", saw)
 
 	for k, v := range errs {
-		log.Printf("Error uploading nomenclature: %s. Details: %v", k, v)
+		log.Printf("Error uploading nomenclature: %d. Details: %v", k, v)
 	}
 
 	log.SetPrefix("")

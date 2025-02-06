@@ -2,20 +2,20 @@ package clients
 
 import (
 	"fmt"
-	"gomarketplace_api/internal/wholesaler/pkg"
-	"gomarketplace_api/internal/wholesaler/pkg/clients"
+	pkg2 "gomarketplace_api/internal/suppliers/wholesaler/pkg"
+	clients2 "gomarketplace_api/internal/suppliers/wholesaler/pkg/clients"
 	"gomarketplace_api/pkg/logger"
 	"io"
 )
 
 type WServiceClient struct {
-	FetcherChain *pkg.FetcherChain
+	FetcherChain *pkg2.FetcherChain
 }
 
 func NewWServiceClient(host string, writer io.Writer) (*WServiceClient, error) {
 	log := logger.NewLogger(writer, "[WServiceClient]")
 
-	fetcherChain := pkg.NewFetcherChain(log)
+	fetcherChain := pkg2.NewFetcherChain(log)
 
 	if err := registerClients(fetcherChain, host, writer); err != nil {
 		return nil, fmt.Errorf("failed to register clients: %w", err)
@@ -26,20 +26,20 @@ func NewWServiceClient(host string, writer io.Writer) (*WServiceClient, error) {
 	}, nil
 }
 
-func registerClients(fetcherChain *pkg.FetcherChain, host string, writer io.Writer) error {
+func registerClients(fetcherChain *pkg2.FetcherChain, host string, writer io.Writer) error {
 	clientsToRegister := []struct {
 		name    string
-		fetcher pkg.Fetcher
+		fetcher pkg2.Fetcher
 	}{
-		{"appellations", clients.NewAppellationsFetcher(host, writer)},
-		{"descriptions", clients.NewDescriptionsClient(host, writer)},
-		{"globalIDs", clients.NewGlobalIDsClient(host, writer)},
-		{"images", clients.NewImageClient(host, writer)},
-		{"prices", clients.NewPriceClient(host, writer)},
-		{"sizes", clients.NewSizesClient(host, writer)},
-		{"brands", clients.NewBrandsClient(host, writer)},
-		{"barcodes", clients.NewBarcodesClient(host, writer)},
-		{"media", clients.NewImageClient(host, writer)},
+		{"appellations", clients2.NewAppellationsFetcher(host, writer)},
+		{"descriptions", clients2.NewDescriptionsClient(host, writer)},
+		{"globalIDs", clients2.NewGlobalIDsClient(host, writer)},
+		{"images", clients2.NewImageClient(host, writer)},
+		{"prices", clients2.NewPriceClient(host, writer)},
+		{"sizes", clients2.NewSizesClient(host, writer)},
+		{"brands", clients2.NewBrandsClient(host, writer)},
+		{"barcodes", clients2.NewBarcodesClient(host, writer)},
+		{"media", clients2.NewImageClient(host, writer)},
 	}
 
 	for _, client := range clientsToRegister {

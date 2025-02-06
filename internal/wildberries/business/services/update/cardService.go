@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"gomarketplace_api/config"
-	"gomarketplace_api/internal/wholesaler/pkg/requests"
+	requests2 "gomarketplace_api/internal/suppliers/wholesaler/pkg/requests"
 	"gomarketplace_api/internal/wildberries/business/models/dto/request"
 	"gomarketplace_api/internal/wildberries/business/services"
 	"gomarketplace_api/internal/wildberries/business/services/builder"
@@ -234,7 +234,7 @@ func (s *CardService) filterAppellations(ctx context.Context, ids []int) (map[in
 		idSet[id] = struct{}{}
 	}
 
-	appellationsRaw, err := s.wsclient.FetcherChain.Fetch(filterContext, "appellations", requests.AppellationsRequest{FilterRequest: requests.FilterRequest{
+	appellationsRaw, err := s.wsclient.FetcherChain.Fetch(filterContext, "appellations", requests2.AppellationsRequest{FilterRequest: requests2.FilterRequest{
 		ProductIDs: ids,
 	}})
 
@@ -275,7 +275,7 @@ func (s *CardService) filterDescriptions(ctx context.Context, ids []int) (map[in
 		idSet[id] = struct{}{}
 	}
 
-	descriptionsRaw, err := s.wsclient.FetcherChain.Fetch(filterContext, "descriptions", requests.DescriptionRequest{FilterRequest: requests.FilterRequest{ProductIDs: ids}, IncludeEmptyDescriptions: false})
+	descriptionsRaw, err := s.wsclient.FetcherChain.Fetch(filterContext, "descriptions", requests2.DescriptionRequest{FilterRequest: requests2.FilterRequest{ProductIDs: ids}, IncludeEmptyDescriptions: false})
 	if err != nil {
 		return nil, err
 	}
@@ -343,8 +343,8 @@ func (s *CardService) filterBrands(ctx context.Context, ids []int) (map[int]inte
 	return filter_utils.FilterData(
 		ids,
 		func(ids []int) (map[int]interface{}, error) {
-			result, err := s.wsclient.FetcherChain.Fetch(filterContext, "brands", requests.BrandRequest{
-				FilterRequest: requests.FilterRequest{ProductIDs: ids},
+			result, err := s.wsclient.FetcherChain.Fetch(filterContext, "brands", requests2.BrandRequest{
+				FilterRequest: requests2.FilterRequest{ProductIDs: ids},
 			})
 			if err != nil {
 				return nil, err
@@ -388,7 +388,7 @@ func (s *CardService) filterPrice(ctx context.Context, ids []int) (map[int]inter
 		idSet[id] = struct{}{}
 	}
 
-	pricesRaw, err := s.wsclient.FetcherChain.Fetch(filterContext, "prices", requests.PriceRequest{FilterRequest: requests.FilterRequest{
+	pricesRaw, err := s.wsclient.FetcherChain.Fetch(filterContext, "prices", requests2.PriceRequest{FilterRequest: requests2.FilterRequest{
 		ProductIDs: ids,
 	}})
 	if err != nil {
@@ -430,7 +430,7 @@ func (s *CardService) filterBarcodes(ctx context.Context, ids []int) (map[int]in
 	filterContext, cancel := context.WithTimeout(ctx, time.Second*10)
 	defer cancel()
 
-	barcodesRaw, err := s.wsclient.FetcherChain.Fetch(filterContext, "barcodes", requests.BarcodeRequest{FilterRequest: requests.FilterRequest{ProductIDs: ids}})
+	barcodesRaw, err := s.wsclient.FetcherChain.Fetch(filterContext, "barcodes", requests2.BarcodeRequest{FilterRequest: requests2.FilterRequest{ProductIDs: ids}})
 	if err != nil {
 		return nil, err
 	}
@@ -475,7 +475,7 @@ func (s *CardService) filterSizes(ctx context.Context, ids []int) (map[int]inter
 	filterContext, cancel := context.WithTimeout(ctx, time.Second*10)
 	defer cancel()
 
-	sizesRaw, err := s.wsclient.FetcherChain.Fetch(filterContext, "sizes", requests.SizeRequest{FilterRequest: requests.FilterRequest{
+	sizesRaw, err := s.wsclient.FetcherChain.Fetch(filterContext, "sizes", requests2.SizeRequest{FilterRequest: requests2.FilterRequest{
 		ProductIDs: ids,
 	}})
 	if err != nil {

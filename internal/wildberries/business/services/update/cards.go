@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"golang.org/x/time/rate"
 	"gomarketplace_api/config/values"
-	"gomarketplace_api/internal/wholesaler/pkg/clients"
-	"gomarketplace_api/internal/wholesaler/pkg/requests"
+	"gomarketplace_api/internal/suppliers/wholesaler/pkg/clients"
+	requests2 "gomarketplace_api/internal/suppliers/wholesaler/pkg/requests"
 	request2 "gomarketplace_api/internal/wildberries/business/models/dto/request"
 	response2 "gomarketplace_api/internal/wildberries/business/models/dto/response"
 	models "gomarketplace_api/internal/wildberries/business/models/get"
@@ -232,8 +232,8 @@ func (cu *CardUpdateService) validateAndPrepareProcessor(
 
 func (cu *CardUpdateService) fetchRequiredData(ctx context.Context) (map[int]interface{}, map[int]interface{}, error) {
 	log.Println("Fetching filterAppellations...")
-	appellationsResult, err := cu.wsclient.FetcherChain.Fetch(ctx, "appellations", requests.AppellationsRequest{
-		FilterRequest: requests.FilterRequest{ProductIDs: []int{}},
+	appellationsResult, err := cu.wsclient.FetcherChain.Fetch(ctx, "appellations", requests2.AppellationsRequest{
+		FilterRequest: requests2.FilterRequest{ProductIDs: []int{}},
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("error fetching filterAppellations: %w", err)
@@ -245,8 +245,8 @@ func (cu *CardUpdateService) fetchRequiredData(ctx context.Context) (map[int]int
 	}
 
 	log.Println("Fetching descriptions...")
-	descriptionsResult, err := cu.wsclient.FetcherChain.Fetch(ctx, "descriptions", requests.AppellationsRequest{
-		FilterRequest: requests.FilterRequest{ProductIDs: []int{}},
+	descriptionsResult, err := cu.wsclient.FetcherChain.Fetch(ctx, "descriptions", requests2.AppellationsRequest{
+		FilterRequest: requests2.FilterRequest{ProductIDs: []int{}},
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("error fetching descriptions: %w", err)
@@ -576,7 +576,7 @@ func (cu *CardUpdateService) UpdateCardBrand(ctx context.Context, settings reque
 
 	brandsContext, cancel := context.WithTimeout(ctx, time.Second*15)
 	defer cancel()
-	brandsRaw, err := cu.wsclient.FetcherChain.Fetch(brandsContext, "brands", requests.BrandRequest{FilterRequest: requests.FilterRequest{ProductIDs: []int{}}})
+	brandsRaw, err := cu.wsclient.FetcherChain.Fetch(brandsContext, "brands", requests2.BrandRequest{FilterRequest: requests2.FilterRequest{ProductIDs: []int{}}})
 	if err != nil {
 		return 0, fmt.Errorf("error fetching descriptions: %w", err)
 	}

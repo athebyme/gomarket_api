@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"golang.org/x/time/rate"
-	"gomarketplace_api/internal/wholesaler/pkg/clients"
+	"gomarketplace_api/internal/suppliers/wholesaler/pkg/clients"
 	"gomarketplace_api/internal/wildberries/business/dto/responses"
 	request2 "gomarketplace_api/internal/wildberries/business/models/dto/request"
 	"gomarketplace_api/internal/wildberries/business/models/dto/response"

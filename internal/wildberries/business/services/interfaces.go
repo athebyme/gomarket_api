@@ -2,7 +2,7 @@ package services
 
 import (
 	"context"
-	"gomarketplace_api/internal/wholesaler/pkg/requests"
+	"gomarketplace_api/internal/suppliers/wholesaler/pkg/requests"
 	request2 "gomarketplace_api/internal/wildberries/business/models/dto/request"
 	response2 "gomarketplace_api/internal/wildberries/business/models/dto/response"
 )

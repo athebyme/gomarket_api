@@ -3,9 +3,11 @@ package main
 import (
 	"fmt"
 	"gomarketplace_api/config"
-	wsapp "gomarketplace_api/internal/wholesaler/app"
-	"gomarketplace_api/internal/wholesaler/app/web"
-	"gomarketplace_api/internal/wholesaler/app/web/handlers"
+	wsapp "gomarketplace_api/internal/suppliers/wholesaler/app"
+	"gomarketplace_api/internal/suppliers/wholesaler/app/web"
+	"gomarketplace_api/internal/suppliers/wholesaler/app/web/handlers/h"
+	"gomarketplace_api/internal/suppliers/wholesaler/business"
+	"gomarketplace_api/internal/suppliers/wholesaler/storage/repositories"
 	wbapp "gomarketplace_api/internal/wildberries/app"
 	metrics2 "gomarketplace_api/metrics"
 	"gomarketplace_api/pkg/dbconnect/postgres"
@@ -48,17 +50,29 @@ func main() {
 
 	wg.Wait()
 
-	wg.Add(1)
+	wg.Add(2)
 	go func() {
 		con := postgres.NewPgConnector(pgConfig)
-		handler := handlers.NewProductHandler(con)
-		mediaHandler := handlers.NewMediaHandler(con)
-		priceHandler := handlers.NewPriceHandler(con)
-		sizeHandler := handlers.NewSizeHandler(con, writer)
-		brandHandler := handlers.NewBrandHandler(con, writer)
-		barcodesHandler := handlers.NewBarcodeHandler(con, writer)
-		defer wg.Done()
-		web.SetupRoutes(handler, mediaHandler, priceHandler, sizeHandler, brandHandler, barcodesHandler)
+		db, err := con.Connect()
+		if err != nil {
+			logger.Log("Database not connected")
+			os.Exit(1)
+		}
+		mediaRepo := repositories.NewMediaRepository(db)
+		prodRepo := repositories.NewProductRepository(db)
+		brandRepo := repositories.NewBrandRepository(prodRepo)
+		prodService := business.NewProductService(prodRepo)
+
+		mediaHandler := h.NewMediaHandler(mediaRepo)
+		priceHandler := h.NewPriceHandler(db)
+		sizeHandler := h.NewSizeHandler(db, writer)
+		brandHandler := h.NewBrandHandler(brandRepo)
+		barcodesHandler := h.NewBarcodeHandler(db)
+		idsHandler := h.NewWholesalerIdsHandler(db)
+		appellationsHandler := h.NewAppellationHandler(prodService)
+		descriptionsHandler := h.NewDescriptionsHandler(prodService)
+		wg.Done()
+		web.SetupRoutes(mediaHandler, priceHandler, sizeHandler, brandHandler, barcodesHandler, idsHandler, appellationsHandler, descriptionsHandler)
 	}()
 
 	wg.Wait()

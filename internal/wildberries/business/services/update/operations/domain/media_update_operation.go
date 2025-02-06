@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	clients2 "gomarketplace_api/internal/wholesaler/pkg/clients"
+	clients2 "gomarketplace_api/internal/suppliers/wholesaler/pkg/clients"
 	"gomarketplace_api/internal/wildberries/business/models/dto/request"
 	"gomarketplace_api/internal/wildberries/business/models/dto/response"
 	"gomarketplace_api/internal/wildberries/business/services/update/operations/domain/models"

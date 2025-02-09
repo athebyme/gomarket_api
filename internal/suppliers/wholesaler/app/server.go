@@ -71,7 +71,7 @@ func (s *WholesalerServer) Run() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*20)
 	defer cancel()
 
-	if err := csvUpdater.Execute(ctx, nil, db); err != nil {
+	if err := csvUpdater.Execute(ctx, nil, db, ""); err != nil {
 		log.Fatalf("Ошибка обновления: %v", err)
 	}
 	// ---------------------------------------------------
@@ -87,7 +87,7 @@ func (s *WholesalerServer) Run() {
 	ctx, cancel = context.WithTimeout(context.Background(), time.Second*20)
 	defer cancel()
 
-	if err := csvUpdater.Execute(ctx, []string{"global_id", "price"}, db); err != nil {
+	if err := csvUpdater.Execute(ctx, []string{"global_id", "price"}, db, ""); err != nil {
 		log.Fatalf("Ошибка обновления: %v", err)
 	}
 	// ---------------------------------------------------
@@ -104,7 +104,7 @@ func (s *WholesalerServer) Run() {
 	ctx, cancel = context.WithTimeout(context.Background(), time.Second*20)
 	defer cancel()
 
-	if err := csvUpdater.Execute(ctx, []string{"global_id", "stocks"}, db); err != nil {
+	if err := csvUpdater.Execute(ctx, []string{"global_id", "stocks"}, db, ""); err != nil {
 		log.Fatalf("Ошибка обновления: %v", err)
 	}
 	// ---------------------------------------------------
@@ -121,7 +121,7 @@ func (s *WholesalerServer) Run() {
 	ctx, cancel = context.WithTimeout(context.Background(), time.Second*20)
 	defer cancel()
 
-	if err := csvUpdater.Execute(ctx, []string{"global_id", "product_description"}, db); err != nil {
+	if err := csvUpdater.Execute(ctx, []string{"global_id", "product_description"}, db, ""); err != nil {
 		log.Fatalf("Ошибка обновления: %v", err)
 	}
 	// ---------------------------------------------------

@@ -2,11 +2,13 @@ package filter_utils
 
 import "fmt"
 
-// FilterData фильтр данных
-func FilterData[T any](
+// FilterData обобщённая функция фильтрации с двумя типовыми параметрами.
+// U — тип данных, который возвращается функцией fetchFunc.
+// T — тип данных, который возвращается функцией transformFunc.
+func FilterData[T any, U any](
 	ids []int,
-	fetchFunc func(ids []int) (map[int]interface{}, error),
-	transformFunc func(id int, data interface{}) (T, bool, error),
+	fetchFunc func(ids []int) (map[int]U, error),
+	transformFunc func(id int, data U) (T, bool, error),
 ) (map[int]T, error) {
 	idSet := make(map[int]struct{}, len(ids))
 	for _, id := range ids {

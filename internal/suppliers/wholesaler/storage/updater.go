@@ -112,7 +112,7 @@ func (pu *PostgresUpdater) fetchCSVData(renaming []string) ([][]string, error) {
 		columnMap[col] = i
 	}
 
-	// Initialize filteredRows with the provided Columns as header
+	// Initialize filteredRows with the provided columns as header
 	filteredRows := [][]string{pu.Columns}
 	for _, row := range data {
 		filteredRow := make([]string, len(pu.Columns))

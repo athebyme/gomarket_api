@@ -15,7 +15,7 @@ import (
 // Updater - механизм обновления данных в базе данных на основе CSV документа.
 // CSVProcessor должен содержать названия колонок оригинального CSV документа, либо названия колонок должны соответствовать колонкам
 // документа по порядку.
-// При этом DBUpdater значения Columns должны содержать либо названия из оригинального документа, либо названия переименованные в случае,
+// При этом DBUpdater значения columns должны содержать либо названия из оригинального документа, либо названия переименованные в случае,
 // если потребовалось переименование в методе Execute.
 type Updater struct {
 	InfURL     string
@@ -60,7 +60,7 @@ func (u *Updater) SetNewLastModCol(col string) *Updater {
 }
 
 func (u *Updater) SetNewProcessor(proc *Processor) *Updater {
-	if proc != nil && len(proc.Columns) > 0 {
+	if proc != nil && len(proc.columns) > 0 {
 		u.CSVProcessor = proc
 	}
 	return u
@@ -77,7 +77,7 @@ func (u *Updater) SetNewUpdater(upd *PostgresUpdater) *Updater {
 // Обрабатывает ответ, в котором может быть несколько строк:
 // первая строка — время в формате "2006-01-02 15:04:05",
 // вторая строка — Unix-время (секунды).
-func (u *Updater) fetchInfTime(ctx context.Context) (time.Time, error) {
+func (u *Updater) fetchInfTime(ctx context.Context, timeFormat string) (time.Time, error) {
 	body, err := u.Fetcher.Fetch(u.InfURL)
 	if err != nil {
 		return time.Time{}, err
@@ -100,7 +100,11 @@ func (u *Updater) fetchInfTime(ctx context.Context) (time.Time, error) {
 			continue
 		}
 
-		if t, err := time.Parse("2006-01-02 15:04:05", line); err == nil {
+		if t, err := time.Parse(timeFormat, line); err == nil {
+			return t, nil
+		}
+
+		if t, err := time.Parse("06.01.02 15:04:05", line); err == nil {
 			return t, nil
 		}
 
@@ -120,7 +124,7 @@ func (u *Updater) getStoredTime(ctx context.Context, db *sql.DB) (time.Time, err
 		u.LastModCol).Scan(&storedTime)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return time.Time{}, nil
+			return time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC), nil
 		}
 		return time.Time{}, err
 	}
@@ -128,8 +132,12 @@ func (u *Updater) getStoredTime(ctx context.Context, db *sql.DB) (time.Time, err
 }
 
 // Execute выполняет процесс обновления, если это необходимо.
-func (u *Updater) Execute(ctx context.Context, renaming []string, db *sql.DB) error {
-	modTime, err := u.fetchInfTime(ctx)
+func (u *Updater) Execute(ctx context.Context, renaming []string, db *sql.DB, timeFormat string) error {
+	if timeFormat == "" {
+		timeFormat = "2006-01-02 15:04:05"
+	}
+
+	modTime, err := u.fetchInfTime(ctx, timeFormat)
 	if err != nil {
 		return err
 	}
@@ -145,19 +153,18 @@ func (u *Updater) Execute(ctx context.Context, renaming []string, db *sql.DB) er
 			return err
 		}
 		defer body.Close()
+		dbCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+		defer cancel()
 
-		csvData, err := u.CSVProcessor.ProcessCSV(body, renaming)
+		convertedData, headers, err := u.CSVProcessor.ProcessCSV(body, renaming)
 		if err != nil {
 			return err
 		}
 
-		dbCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-		defer cancel()
-
-		if err := u.DBUpdater.UpdateData(csvData, dbCtx); err != nil {
+		u.DBUpdater.SetNewColumnNaming(headers)
+		if err := u.DBUpdater.UpdateData(convertedData, dbCtx); err != nil {
 			return err
 		}
-
 		_, err = db.ExecContext(ctx, `
 			INSERT INTO metadata (key_name, value, last_update)
 			VALUES ($1, $2, $3)

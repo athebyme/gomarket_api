@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"gomarketplace_api/config"
+	"gomarketplace_api/internal/suppliers/an_msc"
 	wsapp "gomarketplace_api/internal/suppliers/wholesaler/app"
 	"gomarketplace_api/internal/suppliers/wholesaler/app/web"
 	"gomarketplace_api/internal/suppliers/wholesaler/app/web/handlers/h"
@@ -41,8 +42,19 @@ func main() {
 
 	metrics()
 
+	con := postgres.NewPgConnector(pgConfig)
+
+	wg.Add(2)
 	go func() {
-		con := postgres.NewPgConnector(pgConfig)
+		an := an_msc.NewAnManager(con)
+		err = an.Run()
+		if err != nil {
+			return
+		}
+	}()
+	wg.Wait()
+
+	go func() {
 		wserver := wsapp.NewWServer(con)
 		wserver.Run()
 		defer wg.Done()
@@ -52,7 +64,6 @@ func main() {
 
 	wg.Add(2)
 	go func() {
-		con := postgres.NewPgConnector(pgConfig)
 		db, err := con.Connect()
 		if err != nil {
 			logger.Log("Database not connected")

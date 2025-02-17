@@ -49,7 +49,7 @@ func (u *PostgresUpdater) SetNewTableName(tableName string) *PostgresUpdater {
 }
 
 // UpdateData принимает подготовленные CSV данные и выполняет обновление через транзакцию.
-func (u *PostgresUpdater) UpdateData(csvData [][]string, ctx context.Context) error {
+func (u *PostgresUpdater) UpdateData(csvData [][]interface{}, ctx context.Context) error {
 	tx, err := u.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -58,9 +58,9 @@ func (u *PostgresUpdater) UpdateData(csvData [][]string, ctx context.Context) er
 
 	tempTableName := "temp_" + u.TableName
 	createTempTableQuery := fmt.Sprintf(`
-		CREATE TEMP TABLE %s AS
-		SELECT * FROM %s.%s WHERE 1=0
-	`, tempTableName, u.Schema, u.TableName)
+        CREATE TEMP TABLE %s AS
+        SELECT * FROM %s.%s WHERE 1=0
+    `, tempTableName, u.Schema, u.TableName)
 	if _, err := tx.ExecContext(ctx, createTempTableQuery); err != nil {
 		return fmt.Errorf("create temp table error: %w", err)
 	}
@@ -70,10 +70,14 @@ func (u *PostgresUpdater) UpdateData(csvData [][]string, ctx context.Context) er
 	if err != nil {
 		return fmt.Errorf("prepare copyin error: %w", err)
 	}
-	for _, row := range csvData[1:] {
-		values := convertRowToInterfaceSlice(row)
-		if _, err := stmt.ExecContext(ctx, values...); err != nil {
-			return fmt.Errorf("exec copyin error: %w", err)
+
+	for i, row := range csvData[1:] {
+		log.Printf("Processing row %d", i)
+		log.Printf("Row data: %v", row)
+
+		if _, err := stmt.ExecContext(ctx, row...); err != nil {
+			log.Printf("Error in row %d: %v", i, err)
+			return fmt.Errorf("exec copyin error at row %d: %w", i, err)
 		}
 	}
 	if _, err = stmt.ExecContext(ctx); err != nil {
@@ -117,12 +121,4 @@ func (u *PostgresUpdater) prefixedColumns(prefix string) []string {
 		cols[i] = prefix + col
 	}
 	return cols
-}
-
-func convertRowToInterfaceSlice(row []string) []interface{} {
-	result := make([]interface{}, len(row))
-	for i, v := range row {
-		result[i] = v
-	}
-	return result
 }

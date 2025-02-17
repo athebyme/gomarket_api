@@ -91,6 +91,7 @@ func (u *PostgresUpdater) UpdateData(csvData [][]interface{}, ctx context.Contex
 		INSERT INTO %s.%s (%s)
 		SELECT %s 
 		FROM %s AS temp
+		JOIN wholesaler.products AS prod ON temp.global_id = prod.global_id
 		LEFT JOIN %s.%s AS main ON temp.%s = main.%s
 		WHERE main.%s IS NULL
 		ON CONFLICT (%s) DO NOTHING

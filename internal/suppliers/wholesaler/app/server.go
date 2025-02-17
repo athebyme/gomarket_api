@@ -2,13 +2,11 @@ package app
 
 import (
 	"context"
-	"gomarketplace_api/internal/suppliers/wholesaler/storage/repositories"
 	"gomarketplace_api/migrations/infrastructure"
 	"gomarketplace_api/pkg/business/service/csv_to_postgres"
 	"gomarketplace_api/pkg/dbconnect"
 	"gomarketplace_api/pkg/dbconnect/migration"
 	"log"
-	"os"
 	"time"
 )
 
@@ -25,7 +23,6 @@ func (s *WholesalerServer) Run() {
 	if err != nil {
 		log.Printf("Error connecting to PostgreSQL: %s\n", err)
 	}
-	defer db.Close()
 
 	log.Printf("Preparing migrations now.")
 	migrationApply := []migration.MigrationInterface{
@@ -137,9 +134,9 @@ func (s *WholesalerServer) Run() {
 	//	log.Fatalf("Error populating media table: %s\n", err)
 	//}
 	// ПОМЕНЯТЬ WRITER !
-	sizeRepo := repositories.NewSizeRepository(db, os.Stderr)
-	err = sizeRepo.Populate()
-	if err != nil {
-		log.Fatalf("Error populating media table: %s\n", err)
-	}
+	//sizeRepo := repositories.NewSizeRepository(db, os.Stderr)
+	//err = sizeRepo.Populate()
+	//if err != nil {
+	//	log.Fatalf("Error populating media table: %s\n", err)
+	//}
 }

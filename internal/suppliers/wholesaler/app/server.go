@@ -131,11 +131,11 @@ func (s *WholesalerServer) Run() {
 	// ---------------------------------------------------
 
 	// ------------------ обновления с инициализацией репо ------------------
-	mediaRepo := repositories.NewMediaRepository(db)
-	err = mediaRepo.Populate()
-	if err != nil {
-		log.Fatalf("Error populating media table: %s\n", err)
-	}
+	//mediaRepo := repositories.NewMediaRepository(db)
+	//err = mediaRepo.Populate()
+	//if err != nil {
+	//	log.Fatalf("Error populating media table: %s\n", err)
+	//}
 	// ПОМЕНЯТЬ WRITER !
 	sizeRepo := repositories.NewSizeRepository(db, os.Stderr)
 	err = sizeRepo.Populate()

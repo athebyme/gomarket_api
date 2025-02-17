@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"gomarketplace_api/config"
-	"gomarketplace_api/internal/suppliers/an_msc"
 	wsapp "gomarketplace_api/internal/suppliers/wholesaler/app"
 	"gomarketplace_api/internal/suppliers/wholesaler/app/web"
 	"gomarketplace_api/internal/suppliers/wholesaler/app/web/handlers/h"
@@ -44,15 +43,15 @@ func main() {
 
 	con := postgres.NewPgConnector(pgConfig)
 
-	wg.Add(2)
-	go func() {
-		an := an_msc.NewAnManager(con)
-		err = an.Run()
-		if err != nil {
-			return
-		}
-	}()
-	wg.Wait()
+	//wg.Add(1)
+	//go func() {
+	//	an := an_msc.NewAnManager(con)
+	//	err = an.Run()
+	//	if err != nil {
+	//		return
+	//	}
+	//}()
+	//wg.Wait()
 
 	go func() {
 		wserver := wsapp.NewWServer(con)

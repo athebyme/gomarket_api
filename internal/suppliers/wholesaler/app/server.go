@@ -27,6 +27,7 @@ func (s *WholesalerServer) Run() {
 	}
 	defer db.Close()
 
+	log.Printf("Preparing migrations now.")
 	migrationApply := []migration.MigrationInterface{
 		&infrastructure.WholesalerSchema{},
 		&infrastructure.MigrationsSchema{},

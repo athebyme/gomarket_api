@@ -16,7 +16,6 @@ type MediaRepository struct {
 func NewMediaRepository(db *sql.DB) *MediaRepository {
 	return &MediaRepository{db: db}
 }
-
 func (r *MediaRepository) Populate() error {
 	log.Printf("Updating media.")
 	rows, err := r.db.Query("SELECT global_id FROM wholesaler.products WHERE global_id NOT IN (SELECT global_id FROM wholesaler.media)")
@@ -25,26 +24,36 @@ func (r *MediaRepository) Populate() error {
 	}
 	defer rows.Close()
 
+	// Получаем всю карту медиа источников один раз
+	mediaSources, err := r.GetMediaSources(false)
+	if err != nil {
+		return fmt.Errorf("failed to get media sources: %w", err)
+	}
+	mediaSourcesCensored, err := r.GetMediaSources(true)
+	if err != nil {
+		return fmt.Errorf("failed to get censored media sources: %w", err)
+	}
+
 	for rows.Next() {
 		var globalID int
 		if err := rows.Scan(&globalID); err != nil {
 			log.Fatalf("Failed to scan row: %v", err)
 		}
 
-		mediaUrls, err := r.GetMediaSources(false)
-		if err != nil {
-			log.Printf("Failed to get media sources for global_id %d: %v", globalID, err)
+		// Извлекаем срез URL-ов для конкретного globalID
+		urls, ok := mediaSources[globalID]
+		if !ok {
+			log.Printf("Media sources not found for global_id %d", globalID)
 			continue
 		}
-
-		mediaUrlsCensored, err := r.GetMediaSources(true)
-		if err != nil {
-			log.Printf("Failed to get censored media sources for global_id %d: %v", globalID, err)
+		censoredUrls, ok := mediaSourcesCensored[globalID]
+		if !ok {
+			log.Printf("Censored media sources not found for global_id %d", globalID)
 			continue
 		}
 
 		_, err = r.db.Exec("INSERT INTO wholesaler.media (global_id, images, images_censored) VALUES ($1, $2, $3)",
-			globalID, pq.Array(mediaUrls), pq.Array(mediaUrlsCensored))
+			globalID, pq.Array(urls), pq.Array(censoredUrls))
 		if err != nil {
 			log.Printf("Failed to insert media for global_id %d: %v", globalID, err)
 		}

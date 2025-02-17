@@ -13,6 +13,10 @@ type WbWholesalerAdapter struct {
 	client *clients.WServiceClient
 }
 
+func NewWbWholesalerAdapter(client *clients.WServiceClient) WbWholesalerAdapter {
+	return WbWholesalerAdapter{client: client}
+}
+
 func (wa *WbWholesalerAdapter) GetIds(ctx context.Context) (map[int]struct{}, error) {
 	searchContext, cancel := context.WithTimeout(ctx, time.Second*10)
 	defer cancel()

@@ -12,6 +12,7 @@ import (
 	"gomarketplace_api/internal/wildberries/business/services/parse"
 	update2 "gomarketplace_api/internal/wildberries/business/services/update"
 	"gomarketplace_api/internal/wildberries/business/services/update/operations/domain"
+	"gomarketplace_api/internal/wildberries/business/services/update/providers_impl"
 	clients2 "gomarketplace_api/internal/wildberries/pkg/clients"
 	"gomarketplace_api/internal/wildberries/storage"
 	"gomarketplace_api/migrations/marketplaces/wb"
@@ -226,7 +227,14 @@ func (s *WildberriesServer) uploadProducts(ctx context.Context, auth services.Au
 	repo := storage.NewNomenclatureRepository(db)
 
 	nmService := update2.NewNomenclatureService(*engine, *repo)
-	cardService := update2.NewCardService(wsUrl, textService, s.writer, s.WildberriesConfig)
+
+	client, err := clients2.NewWServiceClient(wsUrl, s.writer)
+	if err != nil {
+		s.log.Log("Error connecting to PostgreSQL: %s\n", err)
+		return nil
+	}
+	dataProvider := providers_impl.NewWbWholesalerAdapter(client)
+	cardService := update2.NewCardService(textService, s.writer, s.WildberriesConfig, &dataProvider)
 
 	accuracy := float32(0.3)
 	result, err := nmService.GetSetOfUncreatedItemsWithCategories(accuracy, true, categoryID)

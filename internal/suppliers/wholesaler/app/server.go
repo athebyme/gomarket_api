@@ -2,11 +2,13 @@ package app
 
 import (
 	"context"
+	"gomarketplace_api/internal/suppliers/wholesaler/storage/repositories"
 	"gomarketplace_api/migrations/infrastructure"
 	"gomarketplace_api/pkg/business/service/csv_to_postgres"
 	"gomarketplace_api/pkg/dbconnect"
 	"gomarketplace_api/pkg/dbconnect/migration"
 	"log"
+	"os"
 	"time"
 )
 
@@ -38,6 +40,7 @@ func (s *WholesalerServer) Run() {
 	}
 
 	for _, _migration := range migrationApply {
+		log.Printf("Applying migration: %T\n", _migration)
 		if err := _migration.UpMigration(db); err != nil {
 			log.Fatalf("Migration failed: %v", err)
 		}
@@ -111,7 +114,7 @@ func (s *WholesalerServer) Run() {
 
 	// ------------------ descriptions update ------------------
 	csvProc.SetNewColumnNaming([]string{"global_id", "product_description"})
-	postgresUpd.SetNewTableName("stocks").SetNewColumnNaming([]string{"global_id", "product_description"})
+	postgresUpd.SetNewTableName("descriptions").SetNewColumnNaming([]string{"global_id", "product_description"})
 
 	csvUpdater.
 		SetNewInfUrl("http://sexoptovik.ru/files/all_prod_info.inf").
@@ -127,15 +130,15 @@ func (s *WholesalerServer) Run() {
 	// ---------------------------------------------------
 
 	// ------------------ обновления с инициализацией репо ------------------
-	//mediaRepo := repositories.NewMediaRepository(db)
-	//err = mediaRepo.Populate()
-	//if err != nil {
-	//	log.Fatalf("Error populating media table: %s\n", err)
-	//}
-	//// ПОМЕНЯТЬ WRITER !
-	//sizeRepo := repositories.NewSizeRepository(db, os.Stderr)
-	//err = sizeRepo.Populate()
-	//if err != nil {
-	//	log.Fatalf("Error populating media table: %s\n", err)
-	//}
+	mediaRepo := repositories.NewMediaRepository(db)
+	err = mediaRepo.Populate()
+	if err != nil {
+		log.Fatalf("Error populating media table: %s\n", err)
+	}
+	// ПОМЕНЯТЬ WRITER !
+	sizeRepo := repositories.NewSizeRepository(db, os.Stderr)
+	err = sizeRepo.Populate()
+	if err != nil {
+		log.Fatalf("Error populating media table: %s\n", err)
+	}
 }
